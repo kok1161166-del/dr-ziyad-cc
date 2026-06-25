@@ -1,7 +1,10 @@
 import { 
   useGetDashboardStats, 
-  useGetDailyFunnel 
+  useGetDailyFunnel,
+  useClearAllAppointments,
+  useClearAllVisits
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -13,13 +16,38 @@ export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const { data: funnel, isLoading: funnelLoading } = useGetDailyFunnel();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const clearAppointmentsMutation = useClearAllAppointments({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "تم المسح", description: "تم مسح جميع الحجوزات بنجاح" });
+        queryClient.invalidateQueries();
+      },
+      onError: () => {
+        toast({ title: "خطأ", description: "حدث خطأ أثناء مسح الحجوزات", variant: "destructive" });
+      }
+    }
+  });
+
+  const clearVisitsMutation = useClearAllVisits({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "تم المسح", description: "تم مسح جميع الزيارات بنجاح" });
+        queryClient.invalidateQueries();
+      },
+      onError: () => {
+        toast({ title: "خطأ", description: "حدث خطأ أثناء مسح الزيارات", variant: "destructive" });
+      }
+    }
+  });
 
   const handleClearAppointments = () => {
-    toast({ title: "تم المسح", description: "تم مسح جميع الحجوزات بنجاح" });
+    clearAppointmentsMutation.mutate();
   };
 
   const handleClearVisits = () => {
-    toast({ title: "تم المسح", description: "تم مسح جميع الزيارات بنجاح" });
+    clearVisitsMutation.mutate();
   };
 
   return (

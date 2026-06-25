@@ -1,14 +1,33 @@
-import { useListPatients } from "@workspace/api-client-react";
+import { useState } from "react";
+import { useListPatients, useDeletePatient } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 import { Search, Plus, Filter, Edit, Trash2, Eye } from "lucide-react";
 import { Link } from "wouter";
 
 export default function Patients() {
-  const { data, isLoading } = useListPatients();
+  const [searchValue, setSearchValue] = useState("");
+  const { data, isLoading } = useListPatients({ search: searchValue || undefined });
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const deletePatient = useDeletePatient({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "تم الحذف", description: "تم نقل المريض إلى الأرشيف" });
+        queryClient.invalidateQueries();
+      },
+      onError: () => {
+        toast({ title: "خطأ", description: "حدث خطأ أثناء الحذف", variant: "destructive" });
+      }
+    }
+  });
 
   return (
     <div className="space-y-6">
@@ -27,7 +46,12 @@ export default function Patients() {
           <div className="flex gap-2">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="بحث بالاسم أو الكود أو رقم الجوال..." className="pr-9" />
+              <Input 
+                placeholder="بحث بالاسم أو الكود أو رقم الجوال..." 
+                className="pr-9" 
+                value={searchValue}
+                onChange={(e) => setSearchValue(e.target.value)}
+              />
             </div>
             <Button variant="outline" className="gap-2">
               <Filter className="h-4 w-4" />
@@ -89,9 +113,30 @@ export default function Patients() {
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600">
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>حذف المريض</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                هل أنت متأكد من حذف المريض ({patient.nameAr})؟ سيتم نقله إلى الأرشيف.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter className="flex gap-2">
+                              <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={() => deletePatient.mutate({ id: patient.id })}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                نعم، احذف
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </TableCell>
                   </TableRow>

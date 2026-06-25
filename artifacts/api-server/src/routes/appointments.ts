@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { appointmentsTable, patientsTable, servicesTable, paymentsTable, visitsTable } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 
 const router = Router();
 
@@ -37,7 +37,7 @@ router.get("/appointments", async (req, res) => {
       const serviceIds = (a.serviceIds as number[]) ?? [];
       let serviceNames: string[] = [];
       if (serviceIds.length > 0) {
-        const svcs = await db.select({ name: servicesTable.name }).from(servicesTable).where(sql`${servicesTable.id} = ANY(${JSON.stringify(serviceIds)}::int[])`);
+        const svcs = await db.select({ name: servicesTable.name }).from(servicesTable).where(inArray(servicesTable.id, serviceIds));
         serviceNames = svcs.map(s => s.name);
       }
       return {
@@ -80,7 +80,7 @@ router.post("/appointments", async (req, res) => {
     const serviceIds = data.serviceIds ?? [];
     let totalFee = "0";
     if (serviceIds.length > 0) {
-      const svcs = await db.select({ fee: servicesTable.patientFee }).from(servicesTable).where(sql`${servicesTable.id} = ANY(${JSON.stringify(serviceIds)}::int[])`);
+      const svcs = await db.select({ fee: servicesTable.patientFee }).from(servicesTable).where(inArray(servicesTable.id, serviceIds));
       totalFee = svcs.reduce((sum, s) => sum + parseFloat(s.fee ?? "0"), 0).toString();
     }
     const [appt] = await db.insert(appointmentsTable).values({
