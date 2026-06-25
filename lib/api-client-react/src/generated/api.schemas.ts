@@ -878,6 +878,101 @@ export interface RoleUpdate {
   permissions?: Permissions;
 }
 
+export interface StaffMember {
+  id: number;
+  userId: number;
+  name: string;
+  username: string;
+  /** @nullable */
+  email?: string | null;
+  roleId: number;
+  roleName: string;
+  /** @nullable */
+  branch?: string | null;
+  isFrozen: boolean;
+  /** @nullable */
+  position?: string | null;
+  /** @nullable */
+  specialty?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  salary?: number | null;
+  /** @nullable */
+  joiningDate?: string | null;
+  workDays: string[];
+  /** @nullable */
+  shiftStart?: string | null;
+  /** @nullable */
+  shiftEnd?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface StaffDetailsInput {
+  userId: number;
+  /** @nullable */
+  position?: string | null;
+  /** @nullable */
+  specialty?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  salary?: number | null;
+  /** @nullable */
+  joiningDate?: string | null;
+  workDays?: string[];
+  /** @nullable */
+  shiftStart?: string | null;
+  /** @nullable */
+  shiftEnd?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type TaskPriority = typeof TaskPriority[keyof typeof TaskPriority];
+
+
+export const TaskPriority = {
+  low: 'low',
+  normal: 'normal',
+  high: 'high',
+} as const;
+
+export interface Task {
+  id: number;
+  title: string;
+  /** @nullable */
+  content?: string | null;
+  /** @nullable */
+  assignedTo?: string | null;
+  priority: TaskPriority;
+  isCompleted: boolean;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  branch?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskInput {
+  title: string;
+  /** @nullable */
+  content?: string | null;
+  /** @nullable */
+  assignedTo?: string | null;
+  /** @nullable */
+  priority?: string | null;
+  /** @nullable */
+  isCompleted?: boolean | null;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  branch?: string | null;
+}
+
 export interface Branch {
   id: number;
   name: string;
@@ -957,6 +1052,17 @@ export interface SystemSettingsUpdate {
   /** @nullable */
   displayBranch?: string | null;
 }
+
+export type ListTasksParams = {
+/**
+ * @nullable
+ */
+branch?: string | null;
+/**
+ * @nullable
+ */
+isCompleted?: boolean | null;
+};
 
 export type GetDashboardStatsParams = {
 /**

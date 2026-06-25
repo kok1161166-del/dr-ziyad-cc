@@ -21,6 +21,10 @@ import Analytics from "@/pages/analytics";
 import Templates from "@/pages/templates";
 import Roles from "@/pages/roles";
 import Settings from "@/pages/settings";
+import Staff from "@/pages/staff";
+import Tasks from "@/pages/tasks";
+import Communication from "@/pages/communication";
+import Backup from "@/pages/backup";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,6 +59,10 @@ function Router() {
         <Route path="/templates" component={Templates} />
         <Route path="/roles" component={Roles} />
         <Route path="/settings" component={Settings} />
+        <Route path="/staff" component={Staff} />
+        <Route path="/tasks" component={Tasks} />
+        <Route path="/communication" component={Communication} />
+        <Route path="/backup" component={Backup} />
         
         <Route component={NotFound} />
       </Switch>

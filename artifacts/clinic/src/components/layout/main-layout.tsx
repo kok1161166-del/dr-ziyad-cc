@@ -13,7 +13,11 @@ import {
   Settings,
   Menu,
   Bell,
-  ChevronDown
+  ChevronDown,
+  UserCog,
+  ClipboardList,
+  MessageSquare,
+  RefreshCw,
 } from "lucide-react";
 import { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -68,6 +72,10 @@ const navItems: NavItem[] = [
   { title: "التحليلات", href: "/analytics", icon: BarChart2 },
   { title: "القوالب الطبية", href: "/templates", icon: FileText },
   { title: "الصلاحيات", href: "/roles", icon: Shield },
+  { title: "شؤون الموظفين", href: "/staff", icon: UserCog },
+  { title: "التواصل والتسويق", href: "/communication", icon: MessageSquare },
+  { title: "الملاحظات والمهام", href: "/tasks", icon: ClipboardList },
+  { title: "المزامنة والنسخ", href: "/backup", icon: RefreshCw },
   { title: "الإعدادات", href: "/settings", icon: Settings },
 ];
 

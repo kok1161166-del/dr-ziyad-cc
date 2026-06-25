@@ -10,6 +10,8 @@ import analyticsRouter from "./analytics";
 import templatesRouter from "./templates";
 import usersRouter from "./users";
 import settingsRouter from "./settings";
+import staffRouter from "./staff";
+import tasksRouter from "./tasks";
 
 const router: IRouter = Router();
 
@@ -24,5 +26,7 @@ router.use(analyticsRouter);
 router.use(templatesRouter);
 router.use(usersRouter);
 router.use(settingsRouter);
+router.use(staffRouter);
+router.use(tasksRouter);
 
 export default router;

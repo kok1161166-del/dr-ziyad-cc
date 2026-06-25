@@ -9,6 +9,209 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary List all staff members with HR details
+ */
+export const ListStaffResponseItem = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "name": zod.string(),
+  "username": zod.string(),
+  "email": zod.string().nullish(),
+  "roleId": zod.number(),
+  "roleName": zod.string(),
+  "branch": zod.string().nullish(),
+  "isFrozen": zod.boolean(),
+  "position": zod.string().nullish(),
+  "specialty": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "salary": zod.number().nullish(),
+  "joiningDate": zod.string().nullish(),
+  "workDays": zod.array(zod.string()),
+  "shiftStart": zod.string().nullish(),
+  "shiftEnd": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListStaffResponse = zod.array(ListStaffResponseItem)
+
+
+/**
+ * @summary Create or update staff HR details
+ */
+export const CreateStaffDetailsBody = zod.object({
+  "userId": zod.number(),
+  "position": zod.string().nullish(),
+  "specialty": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "salary": zod.number().nullish(),
+  "joiningDate": zod.string().nullish(),
+  "workDays": zod.array(zod.string()).optional(),
+  "shiftStart": zod.string().nullish(),
+  "shiftEnd": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateStaffDetailsResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "name": zod.string(),
+  "username": zod.string(),
+  "email": zod.string().nullish(),
+  "roleId": zod.number(),
+  "roleName": zod.string(),
+  "branch": zod.string().nullish(),
+  "isFrozen": zod.boolean(),
+  "position": zod.string().nullish(),
+  "specialty": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "salary": zod.number().nullish(),
+  "joiningDate": zod.string().nullish(),
+  "workDays": zod.array(zod.string()),
+  "shiftStart": zod.string().nullish(),
+  "shiftEnd": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Update staff HR details
+ */
+export const UpdateStaffDetailsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateStaffDetailsBody = zod.object({
+  "userId": zod.number(),
+  "position": zod.string().nullish(),
+  "specialty": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "salary": zod.number().nullish(),
+  "joiningDate": zod.string().nullish(),
+  "workDays": zod.array(zod.string()).optional(),
+  "shiftStart": zod.string().nullish(),
+  "shiftEnd": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const UpdateStaffDetailsResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "name": zod.string(),
+  "username": zod.string(),
+  "email": zod.string().nullish(),
+  "roleId": zod.number(),
+  "roleName": zod.string(),
+  "branch": zod.string().nullish(),
+  "isFrozen": zod.boolean(),
+  "position": zod.string().nullish(),
+  "specialty": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "salary": zod.number().nullish(),
+  "joiningDate": zod.string().nullish(),
+  "workDays": zod.array(zod.string()),
+  "shiftStart": zod.string().nullish(),
+  "shiftEnd": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary List all tasks/notes
+ */
+export const ListTasksQueryParams = zod.object({
+  "branch": zod.coerce.string().nullish(),
+  "isCompleted": zod.coerce.boolean().nullish()
+})
+
+export const ListTasksResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "content": zod.string().nullish(),
+  "assignedTo": zod.string().nullish(),
+  "priority": zod.enum(['low', 'normal', 'high']),
+  "isCompleted": zod.boolean(),
+  "dueDate": zod.string().nullish(),
+  "branch": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListTasksResponse = zod.array(ListTasksResponseItem)
+
+
+/**
+ * @summary Create a new task or note
+ */
+export const CreateTaskBody = zod.object({
+  "title": zod.string(),
+  "content": zod.string().nullish(),
+  "assignedTo": zod.string().nullish(),
+  "priority": zod.string().nullish(),
+  "isCompleted": zod.boolean().nullish(),
+  "dueDate": zod.string().nullish(),
+  "branch": zod.string().nullish()
+})
+
+export const CreateTaskResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "content": zod.string().nullish(),
+  "assignedTo": zod.string().nullish(),
+  "priority": zod.enum(['low', 'normal', 'high']),
+  "isCompleted": zod.boolean(),
+  "dueDate": zod.string().nullish(),
+  "branch": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update a task
+ */
+export const UpdateTaskParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateTaskBody = zod.object({
+  "title": zod.string(),
+  "content": zod.string().nullish(),
+  "assignedTo": zod.string().nullish(),
+  "priority": zod.string().nullish(),
+  "isCompleted": zod.boolean().nullish(),
+  "dueDate": zod.string().nullish(),
+  "branch": zod.string().nullish()
+})
+
+export const UpdateTaskResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "content": zod.string().nullish(),
+  "assignedTo": zod.string().nullish(),
+  "priority": zod.enum(['low', 'normal', 'high']),
+  "isCompleted": zod.boolean(),
+  "dueDate": zod.string().nullish(),
+  "branch": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a task
+ */
+export const DeleteTaskParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteTaskResponse = zod.object({
+  "success": zod.boolean(),
+  "message": zod.string()
+})
+
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({

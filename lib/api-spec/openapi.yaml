@@ -29,8 +29,158 @@ tags:
     description: Users and roles
   - name: settings
     description: System settings
+  - name: staff
+    description: Staff and doctor management
+  - name: tasks
+    description: Internal notes and tasks
 
 paths:
+  # ─────────────────────────────────────────────
+  # STAFF
+  # ─────────────────────────────────────────────
+  /staff:
+    get:
+      operationId: listStaff
+      tags: [staff]
+      summary: List all staff members with HR details
+      responses:
+        "200":
+          description: Staff list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StaffMember"
+    post:
+      operationId: createStaffDetails
+      tags: [staff]
+      summary: Create or update staff HR details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffDetailsInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMember"
+
+  /staff/{id}:
+    patch:
+      operationId: updateStaffDetails
+      tags: [staff]
+      summary: Update staff HR details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffDetailsInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMember"
+
+  # ─────────────────────────────────────────────
+  # TASKS
+  # ─────────────────────────────────────────────
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List all tasks/notes
+      parameters:
+        - name: branch
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: isCompleted
+          in: query
+          schema:
+            type: ["boolean", "null"]
+      responses:
+        "200":
+          description: Task list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a new task or note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /tasks/{id}:
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+
   /healthz:
     get:
       operationId: healthCheck
@@ -2447,6 +2597,123 @@ components:
           $ref: "#/components/schemas/Permissions"
 
     # ── Settings ──
+    StaffMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        name:
+          type: string
+        username:
+          type: string
+        email:
+          type: ["string", "null"]
+        roleId:
+          type: integer
+        roleName:
+          type: string
+        branch:
+          type: ["string", "null"]
+        isFrozen:
+          type: boolean
+        position:
+          type: ["string", "null"]
+        specialty:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        salary:
+          type: ["number", "null"]
+        joiningDate:
+          type: ["string", "null"]
+        workDays:
+          type: array
+          items:
+            type: string
+        shiftStart:
+          type: ["string", "null"]
+        shiftEnd:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required: [id, userId, name, username, roleId, roleName, isFrozen, workDays, createdAt]
+
+    StaffDetailsInput:
+      type: object
+      properties:
+        userId:
+          type: integer
+        position:
+          type: ["string", "null"]
+        specialty:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        salary:
+          type: ["number", "null"]
+        joiningDate:
+          type: ["string", "null"]
+        workDays:
+          type: array
+          items:
+            type: string
+        shiftStart:
+          type: ["string", "null"]
+        shiftEnd:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+      required: [userId]
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        content:
+          type: ["string", "null"]
+        assignedTo:
+          type: ["string", "null"]
+        priority:
+          type: string
+          enum: [low, normal, high]
+        isCompleted:
+          type: boolean
+        dueDate:
+          type: ["string", "null"]
+        branch:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, title, priority, isCompleted, createdAt, updatedAt]
+
+    TaskInput:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: ["string", "null"]
+        assignedTo:
+          type: ["string", "null"]
+        priority:
+          type: ["string", "null"]
+        isCompleted:
+          type: ["boolean", "null"]
+        dueDate:
+          type: ["string", "null"]
+        branch:
+          type: ["string", "null"]
+      required: [title]
+
     Branch:
       type: object
       properties:
