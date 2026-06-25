@@ -1,0 +1,2 @@
+- [Clinic system architecture](clinic-system.md) — PORT env var required for both API (8080) and clinic frontend (20964); workflows must include PORT inline
+- [Drizzle SQL join aliases](drizzle-sql-aliases.md) — Use column references not string aliases in sql template literals when doing joins

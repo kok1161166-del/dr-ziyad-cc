@@ -1,0 +1,1 @@
+export default function ArchivedPatients() { return <div>ArchivedPatients</div>; }
