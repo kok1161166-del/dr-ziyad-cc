@@ -72,6 +72,11 @@ export default function Expenses() {
   const { data: vaults } = useListVaults();
   const { data: routineExpenses, isLoading: routineLoading } = useListRoutineExpenses();
 
+  // ── forms declared first so mutations can safely reference them in callbacks ──
+  const expForm = useForm<z.infer<typeof expenseSchema>>({ resolver: zodResolver(expenseSchema), defaultValues: { amount: 0, note: "" } });
+  const catForm = useForm<z.infer<typeof categorySchema>>({ resolver: zodResolver(categorySchema), defaultValues: { name: "", description: "" } });
+  const routineForm = useForm<z.infer<typeof routineSchema>>({ resolver: zodResolver(routineSchema), defaultValues: { frequency: "monthly", isActive: true, amount: 0 } });
+
   // ── expense mutations ──
   const createExpense = useCreateExpense({
     mutation: {
@@ -79,13 +84,11 @@ export default function Expenses() {
       onError: () => { toast({ title: "خطأ", description: "فشلت عملية التسجيل", variant: "destructive" }); }
     }
   });
-  const expForm = useForm<z.infer<typeof expenseSchema>>({ resolver: zodResolver(expenseSchema), defaultValues: { amount: 0, note: "" } });
 
   // ── category mutations ──
   const createCat = useCreateExpenseCategory({ mutation: { onSuccess: () => { toast({ title: "تم الإضافة" }); queryClient.invalidateQueries(); setIsCatDialogOpen(false); catForm.reset(); } } });
   const updateCat = useUpdateExpenseCategory({ mutation: { onSuccess: () => { toast({ title: "تم التعديل" }); queryClient.invalidateQueries(); setIsCatDialogOpen(false); setEditingCatId(null); catForm.reset(); } } });
   const deleteCat = useDeleteExpenseCategory({ mutation: { onSuccess: () => { toast({ title: "تم الحذف" }); queryClient.invalidateQueries(); } } });
-  const catForm = useForm<z.infer<typeof categorySchema>>({ resolver: zodResolver(categorySchema), defaultValues: { name: "", description: "" } });
 
   const openEditCat = (cat: { id: number; name: string; description?: string | null }) => {
     setEditingCatId(cat.id);
@@ -103,7 +106,6 @@ export default function Expenses() {
   const createRoutine = useCreateRoutineExpense({ mutation: { onSuccess: () => { toast({ title: "تم الإضافة" }); queryClient.invalidateQueries(); setIsRoutineDialogOpen(false); routineForm.reset(); } } });
   const updateRoutine = useUpdateRoutineExpense({ mutation: { onSuccess: () => { toast({ title: "تم التعديل" }); queryClient.invalidateQueries(); setIsRoutineDialogOpen(false); setEditingRoutineId(null); routineForm.reset(); } } });
   const deleteRoutine = useDeleteRoutineExpense({ mutation: { onSuccess: () => { toast({ title: "تم الحذف" }); queryClient.invalidateQueries(); } } });
-  const routineForm = useForm<z.infer<typeof routineSchema>>({ resolver: zodResolver(routineSchema), defaultValues: { frequency: "monthly", isActive: true, amount: 0 } });
 
   const openEditRoutine = (r: any) => {
     setEditingRoutineId(r.id);

@@ -31,6 +31,14 @@ const providerSchema = z.object({
   address: z.string().optional()
 });
 
+const holSchema = z.object({
+  date: z.string().min(1, "التاريخ مطلوب"),
+  title: z.string().min(2, "العنوان مطلوب"),
+  branch: z.string().optional()
+});
+
+type DayEntry = { isWorking: boolean; openTime: string; closeTime: string };
+
 export default function Settings() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -86,13 +94,16 @@ export default function Settings() {
   // ── Working days state ──
   const { data: workingDays, isLoading: wdLoading } = useListWorkingDays();
   const { data: holidays, isLoading: holLoading } = useListHolidays();
-  const { data: branchList } = useListBranches();
 
   const upsertWD = useUpsertWorkingDays({
     mutation: {
       onSuccess: () => { toast({ title: "تم الحفظ", description: "تم تحديث أيام العمل" }); queryClient.invalidateQueries(); }
     }
   });
+
+  // holForm declared here so createHoliday's onSuccess callback can safely reference it
+  const [isHolOpen, setIsHolOpen] = useState(false);
+  const holForm = useForm<z.infer<typeof holSchema>>({ resolver: zodResolver(holSchema), defaultValues: { date: "", title: "", branch: "" } });
 
   const createHoliday = useCreateHoliday({
     mutation: { onSuccess: () => { toast({ title: "تمت الإضافة" }); queryClient.invalidateQueries(); setIsHolOpen(false); holForm.reset(); } }
@@ -102,10 +113,9 @@ export default function Settings() {
   });
 
   const DAY_NAMES = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
-  const BRANCHES = branchList?.map(b => b.name) ?? [];
+  const BRANCHES = branches?.map(b => b.name) ?? [];
 
   // Build a local editable schedule: branch → dayOfWeek → {isWorking, openTime, closeTime}
-  type DayEntry = { isWorking: boolean; openTime: string; closeTime: string };
   const [schedule, setSchedule] = useState<Record<string, Record<number, DayEntry>>>({});
 
   useEffect(() => {
@@ -132,10 +142,6 @@ export default function Settings() {
     });
     upsertWD.mutate({ data: rows });
   };
-
-  const holSchema = z.object({ date: z.string().min(1, "التاريخ مطلوب"), title: z.string().min(2, "العنوان مطلوب"), branch: z.string().optional() });
-  const [isHolOpen, setIsHolOpen] = useState(false);
-  const holForm = useForm<z.infer<typeof holSchema>>({ resolver: zodResolver(holSchema), defaultValues: { date: "", title: "", branch: "" } });
 
   const [isProvOpen, setIsProvOpen] = useState(false);
   const provForm = useForm<z.infer<typeof providerSchema>>({
