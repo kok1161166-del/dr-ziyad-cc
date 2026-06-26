@@ -1,31 +1,37 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import { patientsTable, appointmentsTable, visitsTable, paymentsTable } from "@workspace/db";
-import { sql, eq, and, gte, lt } from "drizzle-orm";
+import { supabase } from "../lib/supabase";
 
 const router = Router();
 
 router.get("/dashboard/stats", async (req, res) => {
   try {
     const today = new Date().toISOString().split("T")[0];
-    const [todayAppts] = await db.select({ count: sql<number>`count(*)::int` }).from(appointmentsTable).where(eq(appointmentsTable.appointmentDate, today));
-    const [newPatients] = await db.select({ count: sql<number>`count(*)::int` }).from(patientsTable).where(and(eq(patientsTable.isDeleted, false), gte(patientsTable.createdAt, sql`${today}::date`)));
-    const [totalPatients] = await db.select({ count: sql<number>`count(*)::int` }).from(patientsTable).where(eq(patientsTable.isDeleted, false));
-    const [totalVisits] = await db.select({ count: sql<number>`count(*)::int` }).from(visitsTable);
-    const [totalAppointments] = await db.select({ count: sql<number>`count(*)::int` }).from(appointmentsTable);
 
-    const todayPayments = await db.select({ total: sql<number>`coalesce(sum(${paymentsTable.amount}), 0)::float` })
-      .from(paymentsTable)
-      .innerJoin(appointmentsTable, eq(paymentsTable.appointmentId, appointmentsTable.id))
-      .where(eq(appointmentsTable.appointmentDate, today));
+    const [
+      { count: todayAppts },
+      { count: newPatients },
+      { count: totalPatients },
+      { count: totalVisits },
+      { count: totalAppointments },
+      { data: todayPaymentsData },
+    ] = await Promise.all([
+      supabase.from("appointments").select("*", { count: "exact", head: true }).eq("appointment_date", today),
+      supabase.from("patients").select("*", { count: "exact", head: true }).eq("is_deleted", false).gte("created_at", today),
+      supabase.from("patients").select("*", { count: "exact", head: true }).eq("is_deleted", false),
+      supabase.from("visits").select("*", { count: "exact", head: true }),
+      supabase.from("appointments").select("*", { count: "exact", head: true }),
+      supabase.from("payments").select("amount, appointment_id, appointments!inner(appointment_date)").eq("appointments.appointment_date", today),
+    ]);
+
+    const todayRevenue = (todayPaymentsData ?? []).reduce((s: number, p: any) => s + parseFloat(p.amount ?? "0"), 0);
 
     res.json({
-      todayAppointments: todayAppts?.count ?? 0,
-      newPatientsToday: newPatients?.count ?? 0,
-      totalPatients: totalPatients?.count ?? 0,
-      todayRevenue: todayPayments[0]?.total ?? 0,
-      totalVisits: totalVisits?.count ?? 0,
-      totalAppointments: totalAppointments?.count ?? 0,
+      todayAppointments: todayAppts ?? 0,
+      newPatientsToday: newPatients ?? 0,
+      totalPatients: totalPatients ?? 0,
+      todayRevenue,
+      totalVisits: totalVisits ?? 0,
+      totalAppointments: totalAppointments ?? 0,
     });
   } catch (err) {
     req.log.error({ err }, "dashboard stats error");
@@ -36,13 +42,13 @@ router.get("/dashboard/stats", async (req, res) => {
 router.get("/dashboard/funnel", async (req, res) => {
   try {
     const date = (req.query.date as string) || new Date().toISOString().split("T")[0];
-    const rows = await db.select({
-      status: appointmentsTable.status,
-      count: sql<number>`count(*)::int`,
-    }).from(appointmentsTable).where(eq(appointmentsTable.appointmentDate, date)).groupBy(appointmentsTable.status);
+    const { data: rows, error } = await supabase.from("appointments").select("status").eq("appointment_date", date);
+    if (error) throw error;
 
     const map: Record<string, number> = {};
-    for (const r of rows) map[r.status] = r.count;
+    for (const r of rows ?? []) {
+      map[r.status] = (map[r.status] ?? 0) + 1;
+    }
 
     res.json({
       waitingArrival: map["waiting_arrival"] ?? 0,

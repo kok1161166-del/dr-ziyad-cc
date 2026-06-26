@@ -1,14 +1,13 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import { branchesTable, referralProvidersTable, taxSettingsTable, systemSettingsTable, appointmentsTable, visitsTable, workingDaysTable, holidaysTable } from "@workspace/db";
-import { eq, desc, sql, asc } from "drizzle-orm";
+import { supabase } from "../lib/supabase";
 
 const router = Router();
 
 router.get("/settings/branches", async (req, res) => {
   try {
-    const rows = await db.select().from(branchesTable).orderBy(branchesTable.name);
-    res.json(rows);
+    const { data, error } = await supabase.from("branches").select("*").order("name");
+    if (error) throw error;
+    res.json(data ?? []);
   } catch (err) {
     req.log.error({ err }, "list branches error");
     res.status(500).json({ error: "Internal server error" });
@@ -17,8 +16,9 @@ router.get("/settings/branches", async (req, res) => {
 
 router.get("/settings/referral-providers", async (req, res) => {
   try {
-    const rows = await db.select().from(referralProvidersTable).orderBy(referralProvidersTable.name);
-    res.json(rows.map(r => ({ ...r, createdAt: r.createdAt?.toISOString?.() ?? r.createdAt })));
+    const { data, error } = await supabase.from("referral_providers").select("*").order("name");
+    if (error) throw error;
+    res.json(data ?? []);
   } catch (err) {
     req.log.error({ err }, "list referral providers error");
     res.status(500).json({ error: "Internal server error" });
@@ -28,8 +28,9 @@ router.get("/settings/referral-providers", async (req, res) => {
 router.post("/settings/referral-providers", async (req, res) => {
   try {
     const { name, specialty, phone, address } = req.body;
-    const [prov] = await db.insert(referralProvidersTable).values({ name, specialty, phone, address }).returning();
-    res.status(201).json({ ...prov, createdAt: prov.createdAt?.toISOString?.() ?? prov.createdAt });
+    const { data: prov, error } = await supabase.from("referral_providers").insert({ name, specialty, phone, address }).select().single();
+    if (error) throw error;
+    res.status(201).json(prov);
   } catch (err) {
     req.log.error({ err }, "create referral provider error");
     res.status(500).json({ error: "Internal server error" });
@@ -38,11 +39,17 @@ router.post("/settings/referral-providers", async (req, res) => {
 
 router.get("/settings/tax", async (req, res) => {
   try {
-    let [settings] = await db.select().from(taxSettingsTable).limit(1);
+    let { data: settings } = await supabase.from("tax_settings").select("*").limit(1).single();
     if (!settings) {
-      [settings] = await db.insert(taxSettingsTable).values({}).returning();
+      const { data: created } = await supabase.from("tax_settings").insert({}).select().single();
+      settings = created;
     }
-    res.json({ branch: settings.branch, taxType: settings.taxType, taxTitle: settings.taxTitle, taxPercentage: parseFloat(settings.taxPercentage ?? "0") });
+    res.json({
+      branch: (settings as any)?.branch,
+      taxType: (settings as any)?.tax_type,
+      taxTitle: (settings as any)?.tax_title,
+      taxPercentage: parseFloat((settings as any)?.tax_percentage ?? "0"),
+    });
   } catch (err) {
     req.log.error({ err }, "get tax settings error");
     res.status(500).json({ error: "Internal server error" });
@@ -52,16 +59,24 @@ router.get("/settings/tax", async (req, res) => {
 router.patch("/settings/tax", async (req, res) => {
   try {
     const data = req.body;
-    const updates: any = { updatedAt: new Date() };
-    if (data.taxType !== undefined) updates.taxType = data.taxType;
-    if (data.taxTitle !== undefined) updates.taxTitle = data.taxTitle;
-    if (data.taxPercentage !== undefined) updates.taxPercentage = data.taxPercentage.toString();
-    let [existing] = await db.select().from(taxSettingsTable).limit(1);
+    const updates: any = { updated_at: new Date().toISOString() };
+    if (data.taxType !== undefined) updates.tax_type = data.taxType;
+    if (data.taxTitle !== undefined) updates.tax_title = data.taxTitle;
+    if (data.taxPercentage !== undefined) updates.tax_percentage = data.taxPercentage.toString();
+
+    let { data: existing } = await supabase.from("tax_settings").select("id").limit(1).single();
     if (!existing) {
-      [existing] = await db.insert(taxSettingsTable).values({}).returning();
+      const { data: created } = await supabase.from("tax_settings").insert({}).select().single();
+      existing = created;
     }
-    const [updated] = await db.update(taxSettingsTable).set(updates).where(eq(taxSettingsTable.id, existing.id)).returning();
-    res.json({ branch: updated.branch, taxType: updated.taxType, taxTitle: updated.taxTitle, taxPercentage: parseFloat(updated.taxPercentage ?? "0") });
+    const { data: updated, error } = await supabase.from("tax_settings").update(updates).eq("id", (existing as any).id).select().single();
+    if (error) throw error;
+    res.json({
+      branch: (updated as any)?.branch,
+      taxType: (updated as any)?.tax_type,
+      taxTitle: (updated as any)?.tax_title,
+      taxPercentage: parseFloat((updated as any)?.tax_percentage ?? "0"),
+    });
   } catch (err) {
     req.log.error({ err }, "update tax settings error");
     res.status(500).json({ error: "Internal server error" });
@@ -70,11 +85,17 @@ router.patch("/settings/tax", async (req, res) => {
 
 router.get("/settings/system", async (req, res) => {
   try {
-    let [settings] = await db.select().from(systemSettingsTable).limit(1);
+    let { data: settings } = await supabase.from("system_settings").select("*").limit(1).single();
     if (!settings) {
-      [settings] = await db.insert(systemSettingsTable).values({}).returning();
+      const { data: created } = await supabase.from("system_settings").insert({}).select().single();
+      settings = created;
     }
-    res.json({ activeBranch: settings.activeBranch, appointmentOrder: settings.appointmentOrder, autoRefreshMinutes: settings.autoRefreshMinutes, displayBranch: settings.displayBranch });
+    res.json({
+      activeBranch: (settings as any)?.active_branch,
+      appointmentOrder: (settings as any)?.appointment_order,
+      autoRefreshMinutes: (settings as any)?.auto_refresh_minutes,
+      displayBranch: (settings as any)?.display_branch,
+    });
   } catch (err) {
     req.log.error({ err }, "get system settings error");
     res.status(500).json({ error: "Internal server error" });
@@ -84,17 +105,25 @@ router.get("/settings/system", async (req, res) => {
 router.patch("/settings/system", async (req, res) => {
   try {
     const data = req.body;
-    const updates: any = { updatedAt: new Date() };
-    if (data.activeBranch !== undefined) updates.activeBranch = data.activeBranch;
-    if (data.appointmentOrder !== undefined) updates.appointmentOrder = data.appointmentOrder;
-    if (data.autoRefreshMinutes !== undefined) updates.autoRefreshMinutes = data.autoRefreshMinutes;
-    if (data.displayBranch !== undefined) updates.displayBranch = data.displayBranch;
-    let [existing] = await db.select().from(systemSettingsTable).limit(1);
+    const updates: any = { updated_at: new Date().toISOString() };
+    if (data.activeBranch !== undefined) updates.active_branch = data.activeBranch;
+    if (data.appointmentOrder !== undefined) updates.appointment_order = data.appointmentOrder;
+    if (data.autoRefreshMinutes !== undefined) updates.auto_refresh_minutes = data.autoRefreshMinutes;
+    if (data.displayBranch !== undefined) updates.display_branch = data.displayBranch;
+
+    let { data: existing } = await supabase.from("system_settings").select("id").limit(1).single();
     if (!existing) {
-      [existing] = await db.insert(systemSettingsTable).values({}).returning();
+      const { data: created } = await supabase.from("system_settings").insert({}).select().single();
+      existing = created;
     }
-    const [updated] = await db.update(systemSettingsTable).set(updates).where(eq(systemSettingsTable.id, existing.id)).returning();
-    res.json({ activeBranch: updated.activeBranch, appointmentOrder: updated.appointmentOrder, autoRefreshMinutes: updated.autoRefreshMinutes, displayBranch: updated.displayBranch });
+    const { data: updated, error } = await supabase.from("system_settings").update(updates).eq("id", (existing as any).id).select().single();
+    if (error) throw error;
+    res.json({
+      activeBranch: (updated as any)?.active_branch,
+      appointmentOrder: (updated as any)?.appointment_order,
+      autoRefreshMinutes: (updated as any)?.auto_refresh_minutes,
+      displayBranch: (updated as any)?.display_branch,
+    });
   } catch (err) {
     req.log.error({ err }, "update system settings error");
     res.status(500).json({ error: "Internal server error" });
@@ -103,8 +132,9 @@ router.patch("/settings/system", async (req, res) => {
 
 router.get("/settings/working-days", async (req, res) => {
   try {
-    const rows = await db.select().from(workingDaysTable).orderBy(asc(workingDaysTable.branch), asc(workingDaysTable.dayOfWeek));
-    res.json(rows);
+    const { data, error } = await supabase.from("working_days").select("*").order("branch").order("day_of_week");
+    if (error) throw error;
+    res.json(data ?? []);
   } catch (err) {
     req.log.error({ err }, "list working days error");
     res.status(500).json({ error: "Internal server error" });
@@ -114,13 +144,14 @@ router.get("/settings/working-days", async (req, res) => {
 router.put("/settings/working-days", async (req, res) => {
   try {
     const days: Array<{ branch: string; dayOfWeek: number; isWorking: boolean; openTime?: string; closeTime?: string }> = req.body;
+    const { data: existing } = await supabase.from("working_days").select("*");
     const results = await Promise.all(days.map(async (d) => {
-      const existing = await db.select().from(workingDaysTable).where(eq(workingDaysTable.branch, d.branch)).then(rs => rs.find(r => r.dayOfWeek === d.dayOfWeek));
-      if (existing) {
-        const [updated] = await db.update(workingDaysTable).set({ isWorking: d.isWorking, openTime: d.openTime ?? null, closeTime: d.closeTime ?? null }).where(eq(workingDaysTable.id, existing.id)).returning();
+      const found = (existing ?? []).find((r: any) => r.branch === d.branch && r.day_of_week === d.dayOfWeek);
+      if (found) {
+        const { data: updated } = await supabase.from("working_days").update({ is_working: d.isWorking, open_time: d.openTime ?? null, close_time: d.closeTime ?? null }).eq("id", (found as any).id).select().single();
         return updated;
       } else {
-        const [created] = await db.insert(workingDaysTable).values({ branch: d.branch, dayOfWeek: d.dayOfWeek, isWorking: d.isWorking, openTime: d.openTime ?? null, closeTime: d.closeTime ?? null }).returning();
+        const { data: created } = await supabase.from("working_days").insert({ branch: d.branch, day_of_week: d.dayOfWeek, is_working: d.isWorking, open_time: d.openTime ?? null, close_time: d.closeTime ?? null }).select().single();
         return created;
       }
     }));
@@ -133,8 +164,9 @@ router.put("/settings/working-days", async (req, res) => {
 
 router.get("/settings/holidays", async (req, res) => {
   try {
-    const rows = await db.select().from(holidaysTable).orderBy(asc(holidaysTable.date));
-    res.json(rows.map(r => ({ ...r, createdAt: r.createdAt?.toISOString?.() ?? r.createdAt })));
+    const { data, error } = await supabase.from("holidays").select("*").order("date");
+    if (error) throw error;
+    res.json(data ?? []);
   } catch (err) {
     req.log.error({ err }, "list holidays error");
     res.status(500).json({ error: "Internal server error" });
@@ -144,8 +176,9 @@ router.get("/settings/holidays", async (req, res) => {
 router.post("/settings/holidays", async (req, res) => {
   try {
     const { branch, date, title } = req.body;
-    const [row] = await db.insert(holidaysTable).values({ branch: branch ?? null, date, title }).returning();
-    res.status(201).json({ ...row, createdAt: row.createdAt?.toISOString?.() ?? row.createdAt });
+    const { data: row, error } = await supabase.from("holidays").insert({ branch: branch ?? null, date, title }).select().single();
+    if (error) throw error;
+    res.status(201).json(row);
   } catch (err) {
     req.log.error({ err }, "create holiday error");
     res.status(500).json({ error: "Internal server error" });
@@ -155,7 +188,8 @@ router.post("/settings/holidays", async (req, res) => {
 router.delete("/settings/holidays/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await db.delete(holidaysTable).where(eq(holidaysTable.id, id));
+    const { error } = await supabase.from("holidays").delete().eq("id", id);
+    if (error) throw error;
     res.status(204).end();
   } catch (err) {
     req.log.error({ err }, "delete holiday error");
@@ -165,7 +199,8 @@ router.delete("/settings/holidays/:id", async (req, res) => {
 
 router.delete("/danger/clear-appointments", async (req, res) => {
   try {
-    await db.delete(appointmentsTable);
+    const { error } = await supabase.from("appointments").delete().neq("id", 0);
+    if (error) throw error;
     res.json({ success: true, message: "All appointments cleared" });
   } catch (err) {
     req.log.error({ err }, "clear appointments error");
@@ -175,7 +210,8 @@ router.delete("/danger/clear-appointments", async (req, res) => {
 
 router.delete("/danger/clear-visits", async (req, res) => {
   try {
-    await db.delete(visitsTable);
+    const { error } = await supabase.from("visits").delete().neq("id", 0);
+    if (error) throw error;
     res.json({ success: true, message: "All visits cleared" });
   } catch (err) {
     req.log.error({ err }, "clear visits error");

@@ -1,14 +1,13 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import { prescriptionTemplatesTable, investigationTemplatesTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { supabase } from "../lib/supabase";
 
 const router = Router();
 
 router.get("/templates/prescriptions", async (req, res) => {
   try {
-    const rows = await db.select().from(prescriptionTemplatesTable).orderBy(prescriptionTemplatesTable.name);
-    res.json(rows.map(r => ({ ...r, createdAt: r.createdAt?.toISOString?.() ?? r.createdAt })));
+    const { data, error } = await supabase.from("prescription_templates").select("*").order("name");
+    if (error) throw error;
+    res.json(data ?? []);
   } catch (err) {
     req.log.error({ err }, "list prescription templates error");
     res.status(500).json({ error: "Internal server error" });
@@ -18,8 +17,9 @@ router.get("/templates/prescriptions", async (req, res) => {
 router.post("/templates/prescriptions", async (req, res) => {
   try {
     const { name, content, category } = req.body;
-    const [t] = await db.insert(prescriptionTemplatesTable).values({ name, content, category }).returning();
-    res.status(201).json({ ...t, createdAt: t.createdAt?.toISOString?.() ?? t.createdAt });
+    const { data: t, error } = await supabase.from("prescription_templates").insert({ name, content, category }).select().single();
+    if (error) throw error;
+    res.status(201).json(t);
   } catch (err) {
     req.log.error({ err }, "create prescription template error");
     res.status(500).json({ error: "Internal server error" });
@@ -30,12 +30,13 @@ router.patch("/templates/prescriptions/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const data = req.body;
-    const updates: any = { updatedAt: new Date() };
+    const updates: any = { updated_at: new Date().toISOString() };
     if (data.name !== undefined) updates.name = data.name;
     if (data.content !== undefined) updates.content = data.content;
     if (data.category !== undefined) updates.category = data.category;
-    const [updated] = await db.update(prescriptionTemplatesTable).set(updates).where(eq(prescriptionTemplatesTable.id, id)).returning();
-    res.json({ ...updated, createdAt: updated.createdAt?.toISOString?.() ?? updated.createdAt });
+    const { data: updated, error } = await supabase.from("prescription_templates").update(updates).eq("id", id).select().single();
+    if (error) throw error;
+    res.json(updated);
   } catch (err) {
     req.log.error({ err }, "update prescription template error");
     res.status(500).json({ error: "Internal server error" });
@@ -45,7 +46,8 @@ router.patch("/templates/prescriptions/:id", async (req, res) => {
 router.delete("/templates/prescriptions/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await db.delete(prescriptionTemplatesTable).where(eq(prescriptionTemplatesTable.id, id));
+    const { error } = await supabase.from("prescription_templates").delete().eq("id", id);
+    if (error) throw error;
     res.json({ success: true, message: "Template deleted" });
   } catch (err) {
     req.log.error({ err }, "delete prescription template error");
@@ -55,8 +57,9 @@ router.delete("/templates/prescriptions/:id", async (req, res) => {
 
 router.get("/templates/investigations", async (req, res) => {
   try {
-    const rows = await db.select().from(investigationTemplatesTable).orderBy(investigationTemplatesTable.type, investigationTemplatesTable.name);
-    res.json(rows.map(r => ({ ...r, tests: r.tests ?? [], createdAt: r.createdAt?.toISOString?.() ?? r.createdAt })));
+    const { data, error } = await supabase.from("investigation_templates").select("*").order("type").order("name");
+    if (error) throw error;
+    res.json((data ?? []).map((r: any) => ({ ...r, tests: r.tests ?? [] })));
   } catch (err) {
     req.log.error({ err }, "list investigation templates error");
     res.status(500).json({ error: "Internal server error" });
@@ -66,8 +69,9 @@ router.get("/templates/investigations", async (req, res) => {
 router.post("/templates/investigations", async (req, res) => {
   try {
     const { name, type, tests } = req.body;
-    const [t] = await db.insert(investigationTemplatesTable).values({ name, type, tests }).returning();
-    res.status(201).json({ ...t, tests: t.tests ?? [], createdAt: t.createdAt?.toISOString?.() ?? t.createdAt });
+    const { data: t, error } = await supabase.from("investigation_templates").insert({ name, type, tests }).select().single();
+    if (error) throw error;
+    res.status(201).json({ ...t, tests: (t as any).tests ?? [] });
   } catch (err) {
     req.log.error({ err }, "create investigation template error");
     res.status(500).json({ error: "Internal server error" });

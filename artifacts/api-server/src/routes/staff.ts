@@ -1,20 +1,21 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
-import { systemUsersTable, rolesTable, staffDetailsTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { supabase } from "../lib/supabase";
 
 const router = Router();
 
 router.get("/staff", async (req, res) => {
   try {
-    const users = await db.select().from(systemUsersTable).orderBy(systemUsersTable.name);
-    const roles = await db.select().from(rolesTable);
-    const details = await db.select().from(staffDetailsTable);
+    const [{ data: users, error }, { data: roles }, { data: details }] = await Promise.all([
+      supabase.from("system_users").select("*").order("name"),
+      supabase.from("roles").select("id, name"),
+      supabase.from("staff_details").select("*"),
+    ]);
+    if (error) throw error;
 
-    const roleMap = Object.fromEntries(roles.map(r => [r.id, r.name]));
-    const detailMap = Object.fromEntries(details.map(d => [d.userId, d]));
+    const roleMap = Object.fromEntries((roles ?? []).map((r: any) => [r.id, r.name]));
+    const detailMap = Object.fromEntries((details ?? []).map((d: any) => [d.user_id, d]));
 
-    const staff = users.map(u => {
+    const staff = (users ?? []).map((u: any) => {
       const d = detailMap[u.id];
       return {
         id: d?.id ?? u.id,
@@ -22,23 +23,22 @@ router.get("/staff", async (req, res) => {
         name: u.name,
         username: u.username,
         email: u.email ?? null,
-        roleId: u.roleId,
-        roleName: roleMap[u.roleId] ?? "",
+        roleId: u.role_id,
+        roleName: roleMap[u.role_id] ?? "",
         branch: u.branch ?? null,
-        isFrozen: u.isFrozen,
+        isFrozen: u.is_frozen,
         position: d?.position ?? null,
         specialty: d?.specialty ?? null,
         phone: d?.phone ?? null,
         salary: d?.salary ? parseFloat(d.salary) : null,
-        joiningDate: d?.joiningDate ?? null,
-        workDays: (d?.workDays as string[]) ?? [],
-        shiftStart: d?.shiftStart ?? null,
-        shiftEnd: d?.shiftEnd ?? null,
+        joiningDate: d?.joining_date ?? null,
+        workDays: (d?.work_days as string[]) ?? [],
+        shiftStart: d?.shift_start ?? null,
+        shiftEnd: d?.shift_end ?? null,
         notes: d?.notes ?? null,
-        createdAt: u.createdAt?.toISOString?.() ?? String(u.createdAt),
+        createdAt: u.created_at,
       };
     });
-
     res.json(staff);
   } catch (err) {
     req.log.error({ err }, "list staff error");
@@ -50,43 +50,39 @@ router.post("/staff", async (req, res) => {
   try {
     const { userId, position, specialty, phone, salary, joiningDate, workDays, shiftStart, shiftEnd, notes } = req.body;
 
-    const [existing] = await db.select().from(staffDetailsTable).where(eq(staffDetailsTable.userId, userId));
+    const { data: existing } = await supabase.from("staff_details").select("id").eq("user_id", userId).single();
     let detail;
     if (existing) {
-      [detail] = await db.update(staffDetailsTable)
-        .set({ position, specialty, phone, salary: salary?.toString(), joiningDate, workDays, shiftStart, shiftEnd, notes, updatedAt: new Date() })
-        .where(eq(staffDetailsTable.userId, userId))
-        .returning();
+      const { data: updated } = await supabase.from("staff_details").update({
+        position, specialty, phone, salary: salary?.toString(), joining_date: joiningDate,
+        work_days: workDays, shift_start: shiftStart, shift_end: shiftEnd, notes, updated_at: new Date().toISOString(),
+      }).eq("user_id", userId).select().single();
+      detail = updated;
     } else {
-      [detail] = await db.insert(staffDetailsTable)
-        .values({ userId, position, specialty, phone, salary: salary?.toString(), joiningDate, workDays: workDays ?? [], shiftStart, shiftEnd, notes })
-        .returning();
+      const { data: created } = await supabase.from("staff_details").insert({
+        user_id: userId, position, specialty, phone, salary: salary?.toString(),
+        joining_date: joiningDate, work_days: workDays ?? [], shift_start: shiftStart, shift_end: shiftEnd, notes,
+      }).select().single();
+      detail = created;
     }
 
-    const [user] = await db.select().from(systemUsersTable).where(eq(systemUsersTable.id, userId));
-    if (!user) { res.status(404).json({ error: "User not found" }); return; }
-    const [role] = await db.select().from(rolesTable).where(eq(rolesTable.id, user.roleId));
+    const [{ data: user }, { data: roles }] = await Promise.all([
+      supabase.from("system_users").select("*").eq("id", userId).single(),
+      supabase.from("roles").select("id, name"),
+    ]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const roleMap = Object.fromEntries((roles ?? []).map((r: any) => [r.id, r.name]));
 
     res.status(201).json({
-      id: detail.id,
-      userId: user.id,
-      name: user.name,
-      username: user.username,
-      email: user.email ?? null,
-      roleId: user.roleId,
-      roleName: role?.name ?? "",
-      branch: user.branch ?? null,
-      isFrozen: user.isFrozen,
-      position: detail.position ?? null,
-      specialty: detail.specialty ?? null,
-      phone: detail.phone ?? null,
-      salary: detail.salary ? parseFloat(detail.salary) : null,
-      joiningDate: detail.joiningDate ?? null,
-      workDays: (detail.workDays as string[]) ?? [],
-      shiftStart: detail.shiftStart ?? null,
-      shiftEnd: detail.shiftEnd ?? null,
-      notes: detail.notes ?? null,
-      createdAt: user.createdAt?.toISOString?.() ?? String(user.createdAt),
+      id: (detail as any).id, userId: (user as any).id, name: (user as any).name,
+      username: (user as any).username, email: (user as any).email ?? null,
+      roleId: (user as any).role_id, roleName: roleMap[(user as any).role_id] ?? "",
+      branch: (user as any).branch ?? null, isFrozen: (user as any).is_frozen,
+      position: (detail as any).position ?? null, specialty: (detail as any).specialty ?? null,
+      phone: (detail as any).phone ?? null, salary: (detail as any).salary ? parseFloat((detail as any).salary) : null,
+      joiningDate: (detail as any).joining_date ?? null, workDays: ((detail as any).work_days as string[]) ?? [],
+      shiftStart: (detail as any).shift_start ?? null, shiftEnd: (detail as any).shift_end ?? null,
+      notes: (detail as any).notes ?? null, createdAt: (user as any).created_at,
     });
   } catch (err) {
     req.log.error({ err }, "create staff details error");
@@ -99,48 +95,44 @@ router.patch("/staff/:id", async (req, res) => {
     const userId = parseInt(req.params.id);
     const { position, specialty, phone, salary, joiningDate, workDays, shiftStart, shiftEnd, notes } = req.body;
 
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    const updates: any = { updated_at: new Date().toISOString() };
     if (position !== undefined) updates.position = position;
     if (specialty !== undefined) updates.specialty = specialty;
     if (phone !== undefined) updates.phone = phone;
     if (salary !== undefined) updates.salary = salary?.toString() ?? null;
-    if (joiningDate !== undefined) updates.joiningDate = joiningDate;
-    if (workDays !== undefined) updates.workDays = workDays;
-    if (shiftStart !== undefined) updates.shiftStart = shiftStart;
-    if (shiftEnd !== undefined) updates.shiftEnd = shiftEnd;
+    if (joiningDate !== undefined) updates.joining_date = joiningDate;
+    if (workDays !== undefined) updates.work_days = workDays;
+    if (shiftStart !== undefined) updates.shift_start = shiftStart;
+    if (shiftEnd !== undefined) updates.shift_end = shiftEnd;
     if (notes !== undefined) updates.notes = notes;
 
-    let [detail] = await db.select().from(staffDetailsTable).where(eq(staffDetailsTable.userId, userId));
-    if (!detail) {
-      [detail] = await db.insert(staffDetailsTable).values({ userId, workDays: [], ...updates }).returning();
+    let { data: existing } = await supabase.from("staff_details").select("id").eq("user_id", userId).single();
+    let detail;
+    if (!existing) {
+      const { data: created } = await supabase.from("staff_details").insert({ user_id: userId, work_days: [], ...updates }).select().single();
+      detail = created;
     } else {
-      [detail] = await db.update(staffDetailsTable).set(updates).where(eq(staffDetailsTable.userId, userId)).returning();
+      const { data: updated } = await supabase.from("staff_details").update(updates).eq("user_id", userId).select().single();
+      detail = updated;
     }
 
-    const [user] = await db.select().from(systemUsersTable).where(eq(systemUsersTable.id, userId));
-    if (!user) { res.status(404).json({ error: "User not found" }); return; }
-    const [role] = await db.select().from(rolesTable).where(eq(rolesTable.id, user.roleId));
+    const [{ data: user }, { data: roles }] = await Promise.all([
+      supabase.from("system_users").select("*").eq("id", userId).single(),
+      supabase.from("roles").select("id, name"),
+    ]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const roleMap = Object.fromEntries((roles ?? []).map((r: any) => [r.id, r.name]));
 
     res.json({
-      id: detail.id,
-      userId: user.id,
-      name: user.name,
-      username: user.username,
-      email: user.email ?? null,
-      roleId: user.roleId,
-      roleName: role?.name ?? "",
-      branch: user.branch ?? null,
-      isFrozen: user.isFrozen,
-      position: detail.position ?? null,
-      specialty: detail.specialty ?? null,
-      phone: detail.phone ?? null,
-      salary: detail.salary ? parseFloat(detail.salary) : null,
-      joiningDate: detail.joiningDate ?? null,
-      workDays: (detail.workDays as string[]) ?? [],
-      shiftStart: detail.shiftStart ?? null,
-      shiftEnd: detail.shiftEnd ?? null,
-      notes: detail.notes ?? null,
-      createdAt: user.createdAt?.toISOString?.() ?? String(user.createdAt),
+      id: (detail as any).id, userId: (user as any).id, name: (user as any).name,
+      username: (user as any).username, email: (user as any).email ?? null,
+      roleId: (user as any).role_id, roleName: roleMap[(user as any).role_id] ?? "",
+      branch: (user as any).branch ?? null, isFrozen: (user as any).is_frozen,
+      position: (detail as any).position ?? null, specialty: (detail as any).specialty ?? null,
+      phone: (detail as any).phone ?? null, salary: (detail as any).salary ? parseFloat((detail as any).salary) : null,
+      joiningDate: (detail as any).joining_date ?? null, workDays: ((detail as any).work_days as string[]) ?? [],
+      shiftStart: (detail as any).shift_start ?? null, shiftEnd: (detail as any).shift_end ?? null,
+      notes: (detail as any).notes ?? null, createdAt: (user as any).created_at,
     });
   } catch (err) {
     req.log.error({ err }, "update staff details error");
