@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { appointmentsTable, paymentsTable, expensesTable, expenseCategoriesTable, vaultsTable, vaultTransactionsTable, patientsTable, visitsTable } from "@workspace/db";
+import { appointmentsTable, paymentsTable, expensesTable, expenseCategoriesTable, vaultsTable, vaultTransactionsTable, patientsTable, visitsTable, routineExpensesTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 
 const router = Router();
@@ -188,6 +188,98 @@ router.post("/financial/expense-categories", async (req, res) => {
     res.status(201).json({ ...cat, createdAt: cat.createdAt?.toISOString?.() ?? cat.createdAt });
   } catch (err) {
     req.log.error({ err }, "create expense category error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/financial/expense-categories/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, description } = req.body;
+    const [cat] = await db.update(expenseCategoriesTable).set({ name, description }).where(eq(expenseCategoriesTable.id, id)).returning();
+    if (!cat) { res.status(404).json({ error: "Category not found" }); return; }
+    res.json({ ...cat, createdAt: cat.createdAt?.toISOString?.() ?? cat.createdAt });
+  } catch (err) {
+    req.log.error({ err }, "update expense category error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/financial/expense-categories/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.delete(expenseCategoriesTable).where(eq(expenseCategoriesTable.id, id));
+    res.status(204).end();
+  } catch (err) {
+    req.log.error({ err }, "delete expense category error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/financial/routine-expenses", async (req, res) => {
+  try {
+    const rows = await db.select({
+      id: routineExpensesTable.id,
+      categoryId: routineExpensesTable.categoryId,
+      categoryName: expenseCategoriesTable.name,
+      title: routineExpensesTable.title,
+      amount: routineExpensesTable.amount,
+      frequency: routineExpensesTable.frequency,
+      branch: routineExpensesTable.branch,
+      note: routineExpensesTable.note,
+      isActive: routineExpensesTable.isActive,
+      createdAt: routineExpensesTable.createdAt,
+    }).from(routineExpensesTable)
+      .leftJoin(expenseCategoriesTable, eq(routineExpensesTable.categoryId, expenseCategoriesTable.id))
+      .orderBy(desc(routineExpensesTable.createdAt));
+    res.json(rows.map(r => ({ ...r, amount: parseFloat(r.amount ?? "0"), createdAt: r.createdAt?.toISOString?.() ?? r.createdAt })));
+  } catch (err) {
+    req.log.error({ err }, "list routine expenses error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/financial/routine-expenses", async (req, res) => {
+  try {
+    const { categoryId, title, amount, frequency, branch, note, isActive } = req.body;
+    const [row] = await db.insert(routineExpensesTable).values({ categoryId, title, amount: amount.toString(), frequency, branch, note, isActive: isActive ?? true }).returning();
+    const [cat] = await db.select({ name: expenseCategoriesTable.name }).from(expenseCategoriesTable).where(eq(expenseCategoriesTable.id, categoryId));
+    res.status(201).json({ ...row, amount: parseFloat(row.amount ?? "0"), categoryName: cat?.name ?? "", createdAt: row.createdAt?.toISOString?.() ?? row.createdAt });
+  } catch (err) {
+    req.log.error({ err }, "create routine expense error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/financial/routine-expenses/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { categoryId, title, amount, frequency, branch, note, isActive } = req.body;
+    const updates: any = {};
+    if (categoryId !== undefined) updates.categoryId = categoryId;
+    if (title !== undefined) updates.title = title;
+    if (amount !== undefined) updates.amount = amount.toString();
+    if (frequency !== undefined) updates.frequency = frequency;
+    if (branch !== undefined) updates.branch = branch;
+    if (note !== undefined) updates.note = note;
+    if (isActive !== undefined) updates.isActive = isActive;
+    const [row] = await db.update(routineExpensesTable).set(updates).where(eq(routineExpensesTable.id, id)).returning();
+    if (!row) { res.status(404).json({ error: "Not found" }); return; }
+    const [cat] = await db.select({ name: expenseCategoriesTable.name }).from(expenseCategoriesTable).where(eq(expenseCategoriesTable.id, row.categoryId));
+    res.json({ ...row, amount: parseFloat(row.amount ?? "0"), categoryName: cat?.name ?? "", createdAt: row.createdAt?.toISOString?.() ?? row.createdAt });
+  } catch (err) {
+    req.log.error({ err }, "update routine expense error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/financial/routine-expenses/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.delete(routineExpensesTable).where(eq(routineExpensesTable.id, id));
+    res.status(204).end();
+  } catch (err) {
+    req.log.error({ err }, "delete routine expense error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1003,6 +1003,199 @@ export const CreateExpenseCategoryResponse = zod.object({
 
 
 /**
+ * @summary Update expense category
+ */
+export const UpdateExpenseCategoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateExpenseCategoryBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().nullish()
+})
+
+export const UpdateExpenseCategoryResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish()
+})
+
+
+/**
+ * @summary Delete expense category
+ */
+export const DeleteExpenseCategoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteExpenseCategoryResponse = zod.void()
+
+
+/**
+ * @summary List routine expenses
+ */
+export const ListRoutineExpensesResponseItem = zod.object({
+  "id": zod.number(),
+  "categoryId": zod.number(),
+  "categoryName": zod.string().nullish(),
+  "title": zod.string(),
+  "amount": zod.number(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "branch": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string()
+})
+export const ListRoutineExpensesResponse = zod.array(ListRoutineExpensesResponseItem)
+
+
+/**
+ * @summary Create routine expense
+ */
+export const CreateRoutineExpenseBody = zod.object({
+  "categoryId": zod.number(),
+  "title": zod.string(),
+  "amount": zod.number(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "branch": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "isActive": zod.boolean().optional()
+})
+
+export const CreateRoutineExpenseResponse = zod.object({
+  "id": zod.number(),
+  "categoryId": zod.number(),
+  "categoryName": zod.string().nullish(),
+  "title": zod.string(),
+  "amount": zod.number(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "branch": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Update routine expense
+ */
+export const UpdateRoutineExpenseParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateRoutineExpenseBody = zod.object({
+  "categoryId": zod.number(),
+  "title": zod.string(),
+  "amount": zod.number(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "branch": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateRoutineExpenseResponse = zod.object({
+  "id": zod.number(),
+  "categoryId": zod.number(),
+  "categoryName": zod.string().nullish(),
+  "title": zod.string(),
+  "amount": zod.number(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "branch": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete routine expense
+ */
+export const DeleteRoutineExpenseParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteRoutineExpenseResponse = zod.void()
+
+
+/**
+ * @summary List working days
+ */
+export const ListWorkingDaysResponseItem = zod.object({
+  "id": zod.number(),
+  "branch": zod.string(),
+  "dayOfWeek": zod.number(),
+  "isWorking": zod.boolean(),
+  "openTime": zod.string().nullish(),
+  "closeTime": zod.string().nullish()
+})
+export const ListWorkingDaysResponse = zod.array(ListWorkingDaysResponseItem)
+
+
+/**
+ * @summary Upsert working days (bulk)
+ */
+export const UpsertWorkingDaysBodyItem = zod.object({
+  "branch": zod.string(),
+  "dayOfWeek": zod.number(),
+  "isWorking": zod.boolean(),
+  "openTime": zod.string().nullish(),
+  "closeTime": zod.string().nullish()
+})
+export const UpsertWorkingDaysBody = zod.array(UpsertWorkingDaysBodyItem)
+
+export const UpsertWorkingDaysResponseItem = zod.object({
+  "id": zod.number(),
+  "branch": zod.string(),
+  "dayOfWeek": zod.number(),
+  "isWorking": zod.boolean(),
+  "openTime": zod.string().nullish(),
+  "closeTime": zod.string().nullish()
+})
+export const UpsertWorkingDaysResponse = zod.array(UpsertWorkingDaysResponseItem)
+
+
+/**
+ * @summary List holidays
+ */
+export const ListHolidaysResponseItem = zod.object({
+  "id": zod.number(),
+  "branch": zod.string().nullish(),
+  "date": zod.string(),
+  "title": zod.string(),
+  "createdAt": zod.string()
+})
+export const ListHolidaysResponse = zod.array(ListHolidaysResponseItem)
+
+
+/**
+ * @summary Add holiday
+ */
+export const CreateHolidayBody = zod.object({
+  "branch": zod.string().nullish(),
+  "date": zod.string(),
+  "title": zod.string()
+})
+
+export const CreateHolidayResponse = zod.object({
+  "id": zod.number(),
+  "branch": zod.string().nullish(),
+  "date": zod.string(),
+  "title": zod.string(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete holiday
+ */
+export const DeleteHolidayParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteHolidayResponse = zod.void()
+
+
+/**
  * @summary List medical services
  */
 export const ListServicesQueryParams = zod.object({

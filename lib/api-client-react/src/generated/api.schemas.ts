@@ -1053,6 +1053,89 @@ export interface SystemSettingsUpdate {
   displayBranch?: string | null;
 }
 
+export type RoutineExpenseFrequency = typeof RoutineExpenseFrequency[keyof typeof RoutineExpenseFrequency];
+
+
+export const RoutineExpenseFrequency = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface RoutineExpense {
+  id: number;
+  categoryId: number;
+  /** @nullable */
+  categoryName?: string | null;
+  title: string;
+  amount: number;
+  frequency: RoutineExpenseFrequency;
+  /** @nullable */
+  branch?: string | null;
+  /** @nullable */
+  note?: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export type RoutineExpenseInputFrequency = typeof RoutineExpenseInputFrequency[keyof typeof RoutineExpenseInputFrequency];
+
+
+export const RoutineExpenseInputFrequency = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface RoutineExpenseInput {
+  categoryId: number;
+  title: string;
+  amount: number;
+  frequency: RoutineExpenseInputFrequency;
+  /** @nullable */
+  branch?: string | null;
+  /** @nullable */
+  note?: string | null;
+  isActive?: boolean;
+}
+
+export interface WorkingDay {
+  id: number;
+  branch: string;
+  dayOfWeek: number;
+  isWorking: boolean;
+  /** @nullable */
+  openTime?: string | null;
+  /** @nullable */
+  closeTime?: string | null;
+}
+
+export interface WorkingDayInput {
+  branch: string;
+  dayOfWeek: number;
+  isWorking: boolean;
+  /** @nullable */
+  openTime?: string | null;
+  /** @nullable */
+  closeTime?: string | null;
+}
+
+export interface Holiday {
+  id: number;
+  /** @nullable */
+  branch?: string | null;
+  date: string;
+  title: string;
+  createdAt: string;
+}
+
+export interface HolidayInput {
+  /** @nullable */
+  branch?: string | null;
+  date: string;
+  title: string;
+}
+
 export type ListTasksParams = {
 /**
  * @nullable

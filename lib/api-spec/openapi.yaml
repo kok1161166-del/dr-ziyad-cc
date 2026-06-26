@@ -825,6 +825,197 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExpenseCategory"
 
+  /financial/expense-categories/{id}:
+    patch:
+      operationId: updateExpenseCategory
+      tags: [financial]
+      summary: Update expense category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseCategoryInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseCategory"
+    delete:
+      operationId: deleteExpenseCategory
+      tags: [financial]
+      summary: Delete expense category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /financial/routine-expenses:
+    get:
+      operationId: listRoutineExpenses
+      tags: [financial]
+      summary: List routine expenses
+      responses:
+        "200":
+          description: Routine expenses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoutineExpense"
+    post:
+      operationId: createRoutineExpense
+      tags: [financial]
+      summary: Create routine expense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutineExpenseInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutineExpense"
+
+  /financial/routine-expenses/{id}:
+    patch:
+      operationId: updateRoutineExpense
+      tags: [financial]
+      summary: Update routine expense
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutineExpenseInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutineExpense"
+    delete:
+      operationId: deleteRoutineExpense
+      tags: [financial]
+      summary: Delete routine expense
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /settings/working-days:
+    get:
+      operationId: listWorkingDays
+      tags: [settings]
+      summary: List working days
+      responses:
+        "200":
+          description: Working days
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkingDay"
+    put:
+      operationId: upsertWorkingDays
+      tags: [settings]
+      summary: Upsert working days (bulk)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/WorkingDayInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkingDay"
+
+  /settings/holidays:
+    get:
+      operationId: listHolidays
+      tags: [settings]
+      summary: List holidays
+      responses:
+        "200":
+          description: Holidays
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Holiday"
+    post:
+      operationId: createHoliday
+      tags: [settings]
+      summary: Add holiday
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HolidayInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Holiday"
+
+  /settings/holidays/{id}:
+    delete:
+      operationId: deleteHoliday
+      tags: [settings]
+      summary: Delete holiday
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
   # ─────────────────────────────────────────────
   # SERVICES
   # ─────────────────────────────────────────────
@@ -2804,3 +2995,107 @@ components:
           type: ["integer", "null"]
         displayBranch:
           type: ["string", "null"]
+
+    RoutineExpense:
+      type: object
+      properties:
+        id:
+          type: integer
+        categoryId:
+          type: integer
+        categoryName:
+          type: ["string", "null"]
+        title:
+          type: string
+        amount:
+          type: number
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly]
+        branch:
+          type: ["string", "null"]
+        note:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+      required: [id, categoryId, title, amount, frequency, isActive, createdAt]
+
+    RoutineExpenseInput:
+      type: object
+      properties:
+        categoryId:
+          type: integer
+        title:
+          type: string
+        amount:
+          type: number
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly]
+        branch:
+          type: ["string", "null"]
+        note:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+      required: [categoryId, title, amount, frequency]
+
+    WorkingDay:
+      type: object
+      properties:
+        id:
+          type: integer
+        branch:
+          type: string
+        dayOfWeek:
+          type: integer
+        isWorking:
+          type: boolean
+        openTime:
+          type: ["string", "null"]
+        closeTime:
+          type: ["string", "null"]
+      required: [id, branch, dayOfWeek, isWorking]
+
+    WorkingDayInput:
+      type: object
+      properties:
+        branch:
+          type: string
+        dayOfWeek:
+          type: integer
+        isWorking:
+          type: boolean
+        openTime:
+          type: ["string", "null"]
+        closeTime:
+          type: ["string", "null"]
+      required: [branch, dayOfWeek, isWorking]
+
+    Holiday:
+      type: object
+      properties:
+        id:
+          type: integer
+        branch:
+          type: ["string", "null"]
+        date:
+          type: string
+        title:
+          type: string
+        createdAt:
+          type: string
+      required: [id, date, title, createdAt]
+
+    HolidayInput:
+      type: object
+      properties:
+        branch:
+          type: ["string", "null"]
+        date:
+          type: string
+        title:
+          type: string
+      required: [date, title]

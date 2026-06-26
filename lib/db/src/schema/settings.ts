@@ -35,5 +35,24 @@ export const systemSettingsTable = pgTable("system_settings", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+export const workingDaysTable = pgTable("working_days", {
+  id: serial("id").primaryKey(),
+  branch: text("branch").notNull(),
+  dayOfWeek: integer("day_of_week").notNull(), // 0=Sun, 1=Mon, ..., 6=Sat
+  isWorking: boolean("is_working").notNull().default(true),
+  openTime: text("open_time").default("09:00"),
+  closeTime: text("close_time").default("17:00"),
+});
+
+export const holidaysTable = pgTable("holidays", {
+  id: serial("id").primaryKey(),
+  branch: text("branch"), // null = all branches
+  date: text("date").notNull(), // YYYY-MM-DD
+  title: text("title").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export type Branch = typeof branchesTable.$inferSelect;
 export type ReferralProvider = typeof referralProvidersTable.$inferSelect;
+export type WorkingDay = typeof workingDaysTable.$inferSelect;
+export type Holiday = typeof holidaysTable.$inferSelect;

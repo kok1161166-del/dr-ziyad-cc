@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { 
   useGetSystemSettings, useUpdateSystemSettings, 
   useGetTaxSettings, useUpdateTaxSettings,
-  useListBranches, useListReferralProviders, useCreateReferralProvider
+  useListBranches, useListReferralProviders, useCreateReferralProvider,
+  useListWorkingDays, useUpsertWorkingDays,
+  useListHolidays, useCreateHoliday, useDeleteHoliday
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -14,12 +16,13 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Settings as SettingsIcon, Receipt, Network, Save, Plus } from "lucide-react";
+import { Settings as SettingsIcon, Receipt, Network, Save, Plus, CalendarDays, Trash2 } from "lucide-react";
 
 const providerSchema = z.object({
   name: z.string().min(2, "الاسم مطلوب"),
@@ -80,6 +83,60 @@ export default function Settings() {
     taxPercentage: 16
   });
 
+  // ── Working days state ──
+  const { data: workingDays, isLoading: wdLoading } = useListWorkingDays();
+  const { data: holidays, isLoading: holLoading } = useListHolidays();
+  const { data: branchList } = useListBranches();
+
+  const upsertWD = useUpsertWorkingDays({
+    mutation: {
+      onSuccess: () => { toast({ title: "تم الحفظ", description: "تم تحديث أيام العمل" }); queryClient.invalidateQueries(); }
+    }
+  });
+
+  const createHoliday = useCreateHoliday({
+    mutation: { onSuccess: () => { toast({ title: "تمت الإضافة" }); queryClient.invalidateQueries(); setIsHolOpen(false); holForm.reset(); } }
+  });
+  const deleteHoliday = useDeleteHoliday({
+    mutation: { onSuccess: () => { toast({ title: "تم الحذف" }); queryClient.invalidateQueries(); } }
+  });
+
+  const DAY_NAMES = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const BRANCHES = branchList?.map(b => b.name) ?? [];
+
+  // Build a local editable schedule: branch → dayOfWeek → {isWorking, openTime, closeTime}
+  type DayEntry = { isWorking: boolean; openTime: string; closeTime: string };
+  const [schedule, setSchedule] = useState<Record<string, Record<number, DayEntry>>>({});
+
+  useEffect(() => {
+    if (workingDays) {
+      const map: Record<string, Record<number, DayEntry>> = {};
+      BRANCHES.forEach(b => {
+        map[b] = {};
+        for (let d = 0; d < 7; d++) {
+          const found = workingDays.find(w => w.branch === b && w.dayOfWeek === d);
+          map[b][d] = { isWorking: found?.isWorking ?? (d < 5), openTime: found?.openTime ?? "09:00", closeTime: found?.closeTime ?? "17:00" };
+        }
+      });
+      setSchedule(map);
+    }
+  }, [workingDays]);
+
+  const onSaveSchedule = () => {
+    const rows: Array<{ branch: string; dayOfWeek: number; isWorking: boolean; openTime: string; closeTime: string }> = [];
+    BRANCHES.forEach(b => {
+      for (let d = 0; d < 7; d++) {
+        const entry = schedule[b]?.[d];
+        if (entry) rows.push({ branch: b, dayOfWeek: d, isWorking: entry.isWorking, openTime: entry.openTime, closeTime: entry.closeTime });
+      }
+    });
+    upsertWD.mutate({ data: rows });
+  };
+
+  const holSchema = z.object({ date: z.string().min(1, "التاريخ مطلوب"), title: z.string().min(2, "العنوان مطلوب"), branch: z.string().optional() });
+  const [isHolOpen, setIsHolOpen] = useState(false);
+  const holForm = useForm<z.infer<typeof holSchema>>({ resolver: zodResolver(holSchema), defaultValues: { date: "", title: "", branch: "" } });
+
   const [isProvOpen, setIsProvOpen] = useState(false);
   const provForm = useForm<z.infer<typeof providerSchema>>({
     resolver: zodResolver(providerSchema),
@@ -127,10 +184,11 @@ export default function Settings() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="md:col-span-4">
           <Tabs defaultValue="system" className="w-full">
-            <TabsList className="w-full max-w-2xl grid grid-cols-3 mb-6">
+            <TabsList className="w-full max-w-3xl grid grid-cols-4 mb-6">
               <TabsTrigger value="system" className="gap-2"><SettingsIcon className="h-4 w-4" /> الإعدادات العامة</TabsTrigger>
               <TabsTrigger value="tax" className="gap-2"><Receipt className="h-4 w-4" /> الإعدادات الضريبية</TabsTrigger>
               <TabsTrigger value="providers" className="gap-2"><Network className="h-4 w-4" /> جهات الإحالة</TabsTrigger>
+              <TabsTrigger value="schedule" className="gap-2"><CalendarDays className="h-4 w-4" /> أيام العمل</TabsTrigger>
             </TabsList>
 
             <TabsContent value="system">
@@ -300,6 +358,135 @@ export default function Settings() {
                   </Table>
                 </CardContent>
               </Card>
+            </TabsContent>
+            <TabsContent value="schedule">
+              <div className="space-y-6">
+                {/* Working days per branch */}
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <div>
+                      <CardTitle>أيام العمل لكل فرع</CardTitle>
+                      <CardDescription>حدد أيام وساعات عمل كل فرع</CardDescription>
+                    </div>
+                    <Button onClick={onSaveSchedule} disabled={upsertWD.isPending} className="gap-2"><Save className="h-4 w-4" /> حفظ الجدول</Button>
+                  </CardHeader>
+                  <CardContent>
+                    {wdLoading ? <Skeleton className="h-48 w-full" /> : (
+                      <div className="space-y-8">
+                        {BRANCHES.map(branch => (
+                          <div key={branch}>
+                            <h3 className="text-sm font-semibold text-muted-foreground mb-3 border-b pb-2">{branch}</h3>
+                            <div className="space-y-2">
+                              {DAY_NAMES.map((dayName, d) => {
+                                const entry = schedule[branch]?.[d] ?? { isWorking: d < 5, openTime: "09:00", closeTime: "17:00" };
+                                return (
+                                  <div key={d} className={`flex items-center gap-4 p-3 rounded-lg border ${entry.isWorking ? 'bg-emerald-50 border-emerald-200' : 'bg-secondary/30 border-transparent'}`}>
+                                    <Switch
+                                      checked={entry.isWorking}
+                                      onCheckedChange={val => setSchedule(s => ({ ...s, [branch]: { ...s[branch], [d]: { ...entry, isWorking: val } } }))}
+                                    />
+                                    <span className={`w-20 text-sm font-medium ${!entry.isWorking ? 'text-muted-foreground' : ''}`}>{dayName}</span>
+                                    {entry.isWorking ? (
+                                      <div className="flex items-center gap-3 flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs text-muted-foreground">من</span>
+                                          <Input type="time" value={entry.openTime} className="w-32 h-8 text-sm"
+                                            onChange={e => setSchedule(s => ({ ...s, [branch]: { ...s[branch], [d]: { ...entry, openTime: e.target.value } } }))} />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs text-muted-foreground">إلى</span>
+                                          <Input type="time" value={entry.closeTime} className="w-32 h-8 text-sm"
+                                            onChange={e => setSchedule(s => ({ ...s, [branch]: { ...s[branch], [d]: { ...entry, closeTime: e.target.value } } }))} />
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span className="text-sm text-muted-foreground italic">إجازة</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Holidays */}
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <div>
+                      <CardTitle>الإجازات والأعياد</CardTitle>
+                      <CardDescription>أضف الإجازات الرسمية والمناسبات الخاصة</CardDescription>
+                    </div>
+                    <Dialog open={isHolOpen} onOpenChange={setIsHolOpen}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" className="gap-1"><Plus className="h-3.5 w-3.5" /> إضافة إجازة</Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader><DialogTitle>إضافة إجازة أو عطلة</DialogTitle></DialogHeader>
+                        <Form {...holForm}>
+                          <form onSubmit={holForm.handleSubmit(data => createHoliday.mutate({ data: { date: data.date, title: data.title, branch: (!data.branch || data.branch === "__all__") ? null : data.branch } }))} className="space-y-4 pt-2">
+                            <FormField control={holForm.control} name="title" render={({ field }) => (
+                              <FormItem><FormLabel>العنوان *</FormLabel><FormControl><Input placeholder="مثال: عيد الفطر المبارك" {...field} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                            <FormField control={holForm.control} name="date" render={({ field }) => (
+                              <FormItem><FormLabel>التاريخ *</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                            <FormField control={holForm.control} name="branch" render={({ field }) => (
+                              <FormItem><FormLabel>يطبق على</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value || "__all__"}>
+                                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="__all__">جميع الفروع</SelectItem>
+                                    <SelectItem value="فرع غزة">فرع غزة</SelectItem>
+                                    <SelectItem value="فرع خان يونس">فرع خان يونس</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </FormItem>
+                            )} />
+                            <div className="flex justify-end pt-4 gap-2">
+                              <Button type="button" variant="outline" onClick={() => setIsHolOpen(false)}>إلغاء</Button>
+                              <Button type="submit" disabled={createHoliday.isPending}>إضافة</Button>
+                            </div>
+                          </form>
+                        </Form>
+                      </DialogContent>
+                    </Dialog>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader className="bg-secondary/20">
+                        <TableRow>
+                          <TableHead>التاريخ</TableHead>
+                          <TableHead>العنوان</TableHead>
+                          <TableHead>الفرع</TableHead>
+                          <TableHead className="w-[60px]"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {holLoading ? (
+                          <TableRow><TableCell colSpan={4}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                        ) : !holidays || holidays.length === 0 ? (
+                          <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">لا يوجد إجازات مضافة</TableCell></TableRow>
+                        ) : holidays.map(h => (
+                          <TableRow key={h.id}>
+                            <TableCell className="font-mono text-sm">{h.date}</TableCell>
+                            <TableCell className="font-medium">{h.title}</TableCell>
+                            <TableCell className="text-sm">{h.branch || 'جميع الفروع'}</TableCell>
+                            <TableCell>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteHoliday.mutate({ id: h.id })}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
           </Tabs>
         </div>

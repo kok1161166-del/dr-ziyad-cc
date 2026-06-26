@@ -39,7 +39,20 @@ export const expensesTable = pgTable("expenses", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const routineExpensesTable = pgTable("routine_expenses", {
+  id: serial("id").primaryKey(),
+  categoryId: integer("category_id").notNull(),
+  title: text("title").notNull(),
+  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+  frequency: text("frequency").notNull().default("monthly"), // daily, weekly, monthly
+  branch: text("branch"),
+  note: text("note"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export type Vault = typeof vaultsTable.$inferSelect;
 export type VaultTransaction = typeof vaultTransactionsTable.$inferSelect;
 export type Expense = typeof expensesTable.$inferSelect;
 export type ExpenseCategory = typeof expenseCategoriesTable.$inferSelect;
+export type RoutineExpense = typeof routineExpensesTable.$inferSelect;
