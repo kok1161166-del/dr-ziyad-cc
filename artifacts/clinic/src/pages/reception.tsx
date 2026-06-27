@@ -289,6 +289,8 @@ export default function Reception() {
   const [examFee, setExamFee] = useState("150");
   const [autoClearQueue, setAutoClearQueue] = useState(() => localStorage.getItem("autoClearQueue") !== "false");
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearedMsg, setClearedMsg] = useState(false);
 
   // ---- Bookings State ----
   const [bookings, setBookings] = useState<DbBooking[]>([]);
@@ -2382,9 +2384,6 @@ export default function Reception() {
   // ---- Render: Settings Section ----
 
   function renderSettingsSection() {
-    const [clearing, setClearing] = useState(false);
-    const [clearedMsg, setClearedMsg] = useState(false);
-
     async function handleClearNow() {
       setClearing(true);
       setClearedMsg(false);
