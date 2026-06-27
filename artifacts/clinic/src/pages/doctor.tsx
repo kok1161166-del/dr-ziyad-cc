@@ -348,17 +348,15 @@ export default function Doctor() {
     if (!currentAppointment?.id || !currentVisit?.id) return;
     try {
       const existing = await getVisitByAppointment(currentAppointment.id);
+      const visitId = existing?.id ?? currentVisit?.id;
+      if (!visitId) return;
       if (existing) {
         setCurrentVisit(existing as VisitWithData);
-        setDiagnosis(existing.diagnosis || "");
-        setTreatmentPlan(existing.treatment_plan || "");
-        setNotes(existing.notes || "");
-        setPrescription(existing.prescription || "");
       }
       const [inj, las, add] = await Promise.all([
-        getInjectionLogs(currentVisit.id),
-        getLaserLogs(currentVisit.id),
-        getSessionAddons(currentVisit.id),
+        getInjectionLogs(visitId),
+        getLaserLogs(visitId),
+        getSessionAddons(visitId),
       ]);
       setInjections(
         inj.map((i: any) => ({

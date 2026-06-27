@@ -327,8 +327,8 @@ export default function Reception() {
 
   // ---- Fetch Bookings ----
 
-  const fetchBookings = useCallback(async () => {
-    setBookingsLoading(true);
+  const fetchBookings = useCallback(async (silent = false) => {
+    if (!silent) setBookingsLoading(true);
     try {
       let from: string | undefined;
       let to: string | undefined;
@@ -354,7 +354,7 @@ export default function Reception() {
     } catch {
       setBookings([]);
     } finally {
-      setBookingsLoading(false);
+      if (!silent) setBookingsLoading(false);
     }
   }, [bookingFilter]);
 
@@ -379,7 +379,7 @@ export default function Reception() {
     }
     const channel = subscribeToAppointments(() => {
       fetchAppointments(true);
-      fetchBookings();
+      fetchBookings(true);
       fetchTodayBookings();
     });
     return () => {
