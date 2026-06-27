@@ -358,6 +358,16 @@ export default function Reception() {
     }
   }, [bookingFilter]);
 
+  // Fetch today's bookings for queue section display
+  const fetchTodayBookings = useCallback(async () => {
+    try {
+      const data = await getBookings(todayStr(), todayStr());
+      setTodayBookings(data);
+    } catch {
+      setTodayBookings([]);
+    }
+  }, []);
+
   // ---- Effects ----
 
   useEffect(() => {
@@ -455,16 +465,6 @@ export default function Reception() {
     }, 300);
     return () => clearTimeout(timer);
   }, [productSearch, products]);
-
-  // Fetch today's bookings for queue section display
-  const fetchTodayBookings = useCallback(async () => {
-    try {
-      const data = await getBookings(todayStr(), todayStr());
-      setTodayBookings(data);
-    } catch {
-      setTodayBookings([]);
-    }
-  }, []);
 
   useEffect(() => {
     const handleInteraction = () => setUserInteracted(true);
