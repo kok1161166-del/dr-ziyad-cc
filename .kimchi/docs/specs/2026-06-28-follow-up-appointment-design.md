@@ -14,22 +14,26 @@
 
 ## 2. تغييرات قاعدة البيانات
 
+**ملف Migration:** `migrations/2026-06-28_add_follow_up_columns.sql`
+
+> **تنبيه:** شغّل هذا الملف يدويًا في Supabase SQL Editor قبل تشغيل التطبيق.
+
 ### 2.1 جدول `visits`
 
 ```sql
 ALTER TABLE visits
-  ADD COLUMN next_appointment_date DATE,
-  ADD COLUMN next_booking_id INTEGER REFERENCES bookings(id);
+  ADD COLUMN IF NOT EXISTS next_appointment_date DATE,
+  ADD COLUMN IF NOT EXISTS next_booking_id INTEGER REFERENCES bookings(id);
 ```
 
 ### 2.2 جدول `bookings`
 
 ```sql
 ALTER TABLE bookings
-  ADD COLUMN patient_id INTEGER REFERENCES patients(id),
-  ADD COLUMN source_visit_id INTEGER REFERENCES visits(id),
-  ADD COLUMN follow_up_interval TEXT,   -- "1_week", "2_weeks", "1_month", "2_months", "3_months", "4_months", "custom"
-  ADD COLUMN follow_up_notes TEXT;
+  ADD COLUMN IF NOT EXISTS patient_id INTEGER REFERENCES patients(id),
+  ADD COLUMN IF NOT EXISTS source_visit_id INTEGER REFERENCES visits(id),
+  ADD COLUMN IF NOT EXISTS follow_up_interval TEXT,
+  ADD COLUMN IF NOT EXISTS follow_up_notes TEXT;
 ```
 
 ### 2.3 ملاحظات
@@ -37,6 +41,7 @@ ALTER TABLE bookings
 - `patient_id` يربط الحجز بالمريض بدل الاسم المجرد فقط.
 - `source_visit_id` يحدد أي زيارة أنشأت هذا الحجز.
 - `follow_up_interval` يخزن الفترة المختارة لتعرض لاحقًا في واجهة الدفع.
+- تم إضافة indexes للبحث السريع.
 
 ---
 
