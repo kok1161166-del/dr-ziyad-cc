@@ -3,7 +3,6 @@
   "buildCommand": "pnpm --filter @workspace/clinic run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "rootDirectory": "artifacts/clinic",
   "rewrites": [
     {
       "source": "/api/(.*)",

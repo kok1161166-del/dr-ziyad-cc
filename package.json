@@ -9,7 +9,7 @@
   },
   "private": true,
   "engines": {
-    "node": "22.x"
+    "node": ">=22.0.0"
   },
   "devDependencies": {
     "@esbuild/win32-x64": "0.27.3",
