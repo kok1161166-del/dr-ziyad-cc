@@ -190,7 +190,7 @@ export default function Services() {
                             <FormControl><SelectTrigger><SelectValue placeholder="بدون مجموعة" /></SelectTrigger></FormControl>
                             <SelectContent>
                               <SelectItem value="none">بدون مجموعة</SelectItem>
-                              {groups?.map(g => <SelectItem key={g.id} value={g.id.toString()}>{g.name}</SelectItem>)}
+                              {Array.isArray(groups) && groups.map(g => <SelectItem key={g.id} value={g.id.toString()}>{g.name}</SelectItem>)}
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -320,7 +320,7 @@ export default function Services() {
                         <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
                       </TableRow>
                     ))
-                  ) : !services || services.length === 0 ? (
+                  ) : !Array.isArray(services) || services.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">لا يوجد خدمات مضافة</TableCell>
                     </TableRow>
@@ -447,7 +447,7 @@ export default function Services() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {groupsLoading ? (
                Array.from({ length: 3 }).map((_, i) => <Card key={i}><CardContent className="p-6"><Skeleton className="h-24" /></CardContent></Card>)
-            ) : !groups || groups.length === 0 ? (
+            ) : !Array.isArray(groups) || groups.length === 0 ? (
               <div className="col-span-full p-8 text-center text-muted-foreground border rounded-lg bg-secondary/20">
                 لا يوجد مجموعات حالياً
               </div>

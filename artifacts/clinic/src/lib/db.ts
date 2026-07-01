@@ -302,6 +302,16 @@ export async function updateVisit(id: number, data: Partial<DbVisit>) {
   if (error) throw error;
 }
 
+export async function getVisitsForPatient(patientId: number) {
+  const { data, error } = await supabase
+    .from("visits")
+    .select("*")
+    .eq("patient_id", patientId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function getVisitByAppointment(appointmentId: number) {
   const { data, error } = await supabase
     .from("visits")
@@ -397,6 +407,50 @@ export async function createPayment(data: Omit<DbPayment, "id">) {
   if (error) throw error;
 }
 
+// ---- Follow-ups ----
+export interface DbFollowUp {
+  id?: number;
+  patient_id: number;
+  visit_id?: number | null;
+  booking_id?: number | null;
+  recommended_date: string;
+  interval_label?: string | null;
+  notes?: string | null;
+  status: string;
+  created_by?: number | null;
+  created_at?: string;
+}
+
+export async function createFollowUp(data: Omit<DbFollowUp, "id" | "created_at">) {
+  const { data: result, error } = await supabase.from("follow_ups").insert(data).select().single();
+  if (error) throw error;
+  return result;
+}
+
+export async function getFollowUpsForPatient(patientId: number) {
+  const { data, error } = await supabase
+    .from("follow_ups")
+    .select("*")
+    .eq("patient_id", patientId)
+    .order("recommended_date", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getFollowUpsByDate(from?: string, to?: string) {
+  let query = supabase.from("follow_ups").select("*").order("recommended_date", { ascending: true });
+  if (from) query = query.gte("recommended_date", from);
+  if (to) query = query.lte("recommended_date", to);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function updateFollowUp(id: number, data: Partial<DbFollowUp>) {
+  const { error } = await supabase.from("follow_ups").update(data).eq("id", id);
+  if (error) throw error;
+}
+
 // ---- Bookings ----
 export interface DbBooking {
   id?: number;
@@ -436,6 +490,147 @@ export async function deleteBooking(id: number) {
   if (error) throw error;
 }
 
+// ---- Visit Photos ----
+export interface DbVisitPhoto {
+  id?: number;
+  visit_id?: number | null;
+  patient_id: number;
+  photo_type: "before" | "after";
+  cloudinary_url: string;
+  cloudinary_public_id: string;
+  notes?: string | null;
+  created_at?: string;
+}
+
+export async function createVisitPhoto(data: Omit<DbVisitPhoto, "id" | "created_at">) {
+  const { data: result, error } = await supabase.from("visit_photos").insert(data).select().single();
+  if (error) throw error;
+  return result;
+}
+
+export async function getVisitPhotosForVisit(visitId: number) {
+  const { data, error } = await supabase
+    .from("visit_photos")
+    .select("*")
+    .eq("visit_id", visitId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getVisitPhotosForPatient(patientId: number) {
+  const { data, error } = await supabase
+    .from("visit_photos")
+    .select("*")
+    .eq("patient_id", patientId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function deleteVisitPhoto(id: number) {
+  const { error } = await supabase.from("visit_photos").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ---- Attendance ----
+export interface DbAttendance {
+  id?: number;
+  user_id: number;
+  user_name: string;
+  role_name: string;
+  check_in: string;
+  check_out?: string | null;
+  date: string;
+  notes?: string | null;
+  created_at?: string;
+}
+
+export async function getAttendance(dateFrom: string, dateTo: string) {
+  const { data, error } = await supabase
+    .from("attendance")
+    .select("*")
+    .gte("date", dateFrom)
+    .lte("date", dateTo)
+    .order("check_in", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function checkIn(data: Omit<DbAttendance, "id" | "check_in" | "created_at">) {
+  const { data: result, error } = await supabase
+    .from("attendance")
+    .insert({ ...data, check_in: new Date().toISOString() })
+    .select()
+    .single();
+  if (error) throw error;
+  return result;
+}
+
+export async function checkOut(id: number) {
+  const { error } = await supabase
+    .from("attendance")
+    .update({ check_out: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function getTodayAttendance() {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data, error } = await supabase
+    .from("attendance")
+    .select("*")
+    .eq("date", today)
+    .order("check_in", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+// ---- Audit Log ----
+export interface DbAuditLog {
+  id?: number;
+  user_id?: number | null;
+  user_name: string;
+  action_type: string;
+  entity_type: string;
+  entity_id?: number | null;
+  entity_name?: string | null;
+  details?: Record<string, unknown> | null;
+  created_at?: string;
+}
+
+export async function logActivity(data: Omit<DbAuditLog, "id" | "created_at">) {
+  const { error } = await supabase.from("audit_log").insert(data);
+  if (error) throw error;
+}
+
+export async function getActivityLog(options: {
+  limit?: number;
+  offset?: number;
+  entityType?: string;
+  actionType?: string;
+  userId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+} = {}) {
+  const { limit = 100, offset = 0, entityType, actionType, userId, dateFrom, dateTo } = options;
+  let query = supabase
+    .from("audit_log")
+    .select("*", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (entityType) query = query.eq("entity_type", entityType);
+  if (actionType) query = query.eq("action_type", actionType);
+  if (userId) query = query.eq("user_id", userId);
+  if (dateFrom) query = query.gte("created_at", dateFrom + "T00:00:00");
+  if (dateTo) query = query.lte("created_at", dateTo + "T23:59:59");
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return { data: data || [], count: count || 0 };
+}
+
 // ---- Subscription-like helpers (polling, since browser can't use service_role key) ----
 let pollIdCounter = 0;
 const polls = new Map<number, ReturnType<typeof setInterval>>();
@@ -463,5 +658,9 @@ export function subscribeToAppointments(
 }
 
 export function subscribeToVisits(callback: (payload?: any) => void) {
+  return callWithRefresh(callback);
+}
+
+export function subscribeToPhotos(callback: (payload?: any) => void) {
   return callWithRefresh(callback);
 }

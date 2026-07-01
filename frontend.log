@@ -1,0 +1,22 @@
+$ vite --config vite.config.ts --host 0.0.0.0
+
+  [32m[1mVITE[22m v7.3.5[39m  [2mready in [0m[1m1079[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m20964[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.100.78:[1m20964[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://172.25.192.1:[1m20964[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[2m21:04:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/doctor.tsx, /src/pages/reception.tsx[22m
+[2m21:04:58[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/doctor.tsx, /src/index.css[22m
+[2m21:05:03[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/doctor.tsx, /src/index.css[22m
+[2m21:05:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/doctor.tsx, /src/index.css[22m
+[2m21:05:44[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/doctor.tsx, /src/index.css[22m
+[2m21:06:02[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/doctor.tsx, /src/index.css[22m
+[2m21:06:09[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/doctor.tsx, /src/index.css[22m
+[2m21:06:37[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/doctor.tsx, /src/index.css[22m
+[2m21:07:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/doctor.tsx, /src/index.css[22m
+[2m21:09:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/reception.tsx, /src/index.css[22m
+[2m21:09:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/reception.tsx, /src/index.css[22m
+[2m21:09:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/reception.tsx, /src/index.css[22m
+[2m21:09:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/reception.tsx, /src/index.css[22m
+[2m21:10:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/reception.tsx, /src/index.css[22m

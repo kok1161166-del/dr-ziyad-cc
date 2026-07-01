@@ -137,7 +137,8 @@ export default function Templates() {
     setInvTests(invTests.filter(t => t !== test));
   };
 
-  const filteredRx = rxTemplates?.filter(t => t.name.includes(rxSearch) || t.content.includes(rxSearch)) || [];
+  const rxList = Array.isArray(rxTemplates) ? rxTemplates : [];
+  const filteredRx = rxList.filter(t => t.name.includes(rxSearch) || t.content.includes(rxSearch));
 
   const getInvTypeBadge = (type: string) => {
     switch(type) {
@@ -362,7 +363,7 @@ export default function Templates() {
                         <TableCell><Skeleton className="h-8 w-full" /></TableCell>
                       </TableRow>
                     ))
-                  ) : !invTemplates || invTemplates.length === 0 ? (
+                  ) : !Array.isArray(invTemplates) || invTemplates.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={3} className="h-32 text-center text-muted-foreground">لا يوجد قوالب طلبات</TableCell>
                     </TableRow>

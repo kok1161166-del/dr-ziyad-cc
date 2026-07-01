@@ -177,7 +177,7 @@ export default function Appointments() {
                       <Select onValueChange={field.onChange} value={field.value?.toString() || ""}>
                         <FormControl><SelectTrigger><SelectValue placeholder="اختر المريض..." /></SelectTrigger></FormControl>
                         <SelectContent>
-                          {patientsList?.patients.map(p => (
+                          {patientsList?.patients?.map(p => (
                             <SelectItem key={p.id} value={p.id.toString()}>{p.nameAr} - {p.localCode}</SelectItem>
                           ))}
                         </SelectContent>
@@ -192,7 +192,7 @@ export default function Appointments() {
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                         <SelectContent>
-                          {branches?.map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
+                          {Array.isArray(branches) && branches.map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
                           {!branches && (
                             <>
                               <SelectItem value="غزة">فرع غزة</SelectItem>
@@ -266,7 +266,7 @@ export default function Appointments() {
                       >
                         <FormControl><SelectTrigger><SelectValue placeholder="اختر الخدمات..." /></SelectTrigger></FormControl>
                         <SelectContent>
-                          {servicesList?.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name} (₪{s.price})</SelectItem>)}
+                          {Array.isArray(servicesList) && servicesList.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name} (₪{s.price})</SelectItem>)}
                         </SelectContent>
                       </Select>
                       <div className="flex flex-wrap gap-2 mt-2">

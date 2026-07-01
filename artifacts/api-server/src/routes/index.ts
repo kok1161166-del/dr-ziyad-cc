@@ -12,8 +12,14 @@ import usersRouter from "./users";
 import settingsRouter from "./settings";
 import staffRouter from "./staff";
 import tasksRouter from "./tasks";
+import supabaseProxyRouter from "./supabase-proxy";
+import uploadRouter from "./upload";
+import authRouter, { authMiddleware } from "./auth";
 
 const router: IRouter = Router();
+
+router.use(authRouter);
+router.use(authMiddleware);
 
 router.use(healthRouter);
 router.use(dashboardRouter);
@@ -28,5 +34,7 @@ router.use(usersRouter);
 router.use(settingsRouter);
 router.use(staffRouter);
 router.use(tasksRouter);
+router.use(supabaseProxyRouter);
+router.use(uploadRouter);
 
 export default router;

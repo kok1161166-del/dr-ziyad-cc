@@ -113,7 +113,7 @@ export default function Settings() {
   });
 
   const DAY_NAMES = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
-  const BRANCHES = branches?.map(b => b.name) ?? [];
+  const BRANCHES = Array.isArray(branches) ? branches.map(b => b.name) : [];
 
   // Build a local editable schedule: branch → dayOfWeek → {isWorking, openTime, closeTime}
   const [schedule, setSchedule] = useState<Record<string, Record<number, DayEntry>>>({});
@@ -348,7 +348,7 @@ export default function Settings() {
                     <TableBody>
                       {provLoading ? (
                         <TableRow><TableCell colSpan={4}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
-                      ) : !providers || providers.length === 0 ? (
+                      ) : !Array.isArray(providers) || providers.length === 0 ? (
                         <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">لا يوجد جهات مضافة</TableCell></TableRow>
                       ) : (
                         providers.map(p => (
@@ -474,7 +474,7 @@ export default function Settings() {
                       <TableBody>
                         {holLoading ? (
                           <TableRow><TableCell colSpan={4}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
-                        ) : !holidays || holidays.length === 0 ? (
+                        ) : !Array.isArray(holidays) || holidays.length === 0 ? (
                           <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">لا يوجد إجازات مضافة</TableCell></TableRow>
                         ) : holidays.map(h => (
                           <TableRow key={h.id}>

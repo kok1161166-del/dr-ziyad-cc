@@ -1136,6 +1136,22 @@ export interface HolidayInput {
   title: string;
 }
 
+export type AuthResponsePermissions = { [key: string]: unknown };
+
+export interface AuthResponse {
+  id: number;
+  username: string;
+  name: string;
+  roleId: number;
+  roleName: string;
+  permissions: AuthResponsePermissions;
+}
+
+export interface LoginInput {
+  username: string;
+  password: string;
+}
+
 export type ListTasksParams = {
 /**
  * @nullable

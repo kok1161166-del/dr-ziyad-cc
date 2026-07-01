@@ -1,0 +1,15 @@
+{
+  "buildCommand": "pnpm -r --filter @workspace/clinic run build",
+  "outputDirectory": "artifacts/clinic/dist",
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

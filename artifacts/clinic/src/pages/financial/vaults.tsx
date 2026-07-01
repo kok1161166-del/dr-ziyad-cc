@@ -54,7 +54,7 @@ function VaultDetails({ vaultId, vaultName }: { vaultId: number, vaultName: stri
           <TableBody>
             {isLoading ? (
               <TableRow><TableCell colSpan={5} className="text-center py-4"><Skeleton className="h-8 w-full" /></TableCell></TableRow>
-            ) : !transactions || transactions.length === 0 ? (
+            ) : !Array.isArray(transactions) || transactions.length === 0 ? (
               <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">لا يوجد حركات مسجلة</TableCell></TableRow>
             ) : (
               transactions.map(t => (
@@ -118,7 +118,7 @@ export default function Vaults() {
           Array.from({ length: 3 }).map((_, i) => (
             <Card key={i}><CardContent className="p-6"><Skeleton className="h-24 w-full" /></CardContent></Card>
           ))
-        ) : vaults?.map(vault => (
+        ) : Array.isArray(vaults) && vaults.map(vault => (
           <Card key={vault.id} className="overflow-hidden hover-elevate">
             <div className={`h-1.5 w-full ${vault.balance < 0 ? 'bg-red-500' : 'bg-emerald-500'}`}></div>
             <CardHeader className="pb-2">

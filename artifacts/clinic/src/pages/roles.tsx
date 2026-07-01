@@ -22,44 +22,46 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Edit, Shield, Users, ShieldAlert, Key } from "lucide-react";
 
-// Permission keys mapping to Arabic
-const PERMISSIONS_MAP: Record<string, string> = {
-  addPatient: "إضافة مريض",
-  editPatient: "تعديل مريض",
-  viewPatientFile: "عرض ملف المريض",
-  listPatients: "قائمة المرضى",
-  deletePatient: "حذف مريض",
-  exportPatients: "تصدير المرضى",
-  addAppointment: "إضافة حجز",
-  viewTodayAppointments: "حجوزات اليوم",
-  viewAllAppointments: "جميع الحجوزات",
-  editAppointment: "تعديل الحجز",
-  monitorAppointments: "مراقبة الحجوزات",
-  addExpense: "إضافة مصروف",
-  viewExpenses: "عرض المصروفات",
-  deleteExpense: "حذف مصروف",
-  viewFinancialReports: "التقارير المالية",
-  payReceivables: "دفع المستحقات",
-  updateDiagnosis: "تحديث التشخيص",
-  editMedicalRecord: "تعديل السجل الطبي",
-  viewVisitHistory: "تاريخ الزيارات",
-  addVitals: "العلامات الحيوية",
-  viewAnalytics: "التحليلات",
-  manageInventory: "إدارة المخزون",
-  manageUsers: "إدارة المستخدمين",
-  manageSettings: "الإعدادات العامة"
+const PERMISSIONS_GROUPS = {
+  "إدارة النظام والإعدادات": {
+    "dashboard.view": "لوحة التحكم",
+    "settings.view": "الإعدادات العامة",
+    "roles.manage": "إدارة الصلاحيات",
+    "staff.manage": "شؤون الموظفين"
+  },
+  "قسم المرضى": {
+    "patients.view": "عرض المرضى",
+    "patients.edit": "تعديل وإضافة المرضى",
+    "patients.delete": "حذف مريض"
+  },
+  "قسم الحجوزات": {
+    "appointments.view": "عرض الحجوزات",
+    "appointments.edit": "إدارة وتعديل الحجوزات"
+  },
+  "القسم المالي": {
+    "financial.view": "عرض المالية",
+    "financial.edit": "تعديل المالية"
+  },
+  "أقسام أخرى": {
+    "services.view": "الخدمات الطبية",
+    "inventory.view": "المخزون"
+  }
 };
+
+const FLAT_PERMISSIONS = Object.values(PERMISSIONS_GROUPS).reduce(
+  (acc, group) => ({ ...acc, ...group }),
+  {} as Record<string, string>
+);
 
 const userSchema = z.object({
   name: z.string().min(2, "الاسم مطلوب"),
   username: z.string().min(4, "اسم المستخدم مطلوب"),
   password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل").optional().or(z.literal("")),
-  email: z.string().email("بريد إلكتروني غير صالح").optional().or(z.literal("")),
   roleId: z.coerce.number().min(1, "الدور مطلوب"),
   branch: z.string().optional()
 });
 
-const defaultPermissions = Object.keys(PERMISSIONS_MAP).reduce((acc, key) => {
+const defaultPermissions = Object.keys(FLAT_PERMISSIONS).reduce((acc, key) => {
   acc[key] = false;
   return acc;
 }, {} as Record<string, boolean>);
@@ -121,7 +123,6 @@ export default function Roles() {
     userForm.reset({
       name: user.name,
       username: user.username,
-      email: user.email || "",
       roleId: user.roleId,
       branch: user.branch || "",
       password: "" // Keep empty for security
@@ -203,7 +204,7 @@ export default function Roles() {
                       <FormField control={userForm.control} name="username" render={({ field }) => (
                         <FormItem>
                           <FormLabel>اسم المستخدم (للدخول) *</FormLabel>
-                          <FormControl><Input dir="ltr" disabled={!!editingUserId} {...field} /></FormControl>
+                          <FormControl><Input dir="ltr" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
@@ -215,13 +216,6 @@ export default function Roles() {
                         </FormItem>
                       )} />
                     </div>
-                    <FormField control={userForm.control} name="email" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>البريد الإلكتروني</FormLabel>
-                        <FormControl><Input dir="ltr" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
                     <div className="grid grid-cols-2 gap-4">
                       <FormField control={userForm.control} name="roleId" render={({ field }) => (
                         <FormItem>
@@ -229,7 +223,7 @@ export default function Roles() {
                           <Select onValueChange={field.onChange} value={field.value?.toString() || ""}>
                             <FormControl><SelectTrigger><SelectValue placeholder="اختر الدور" /></SelectTrigger></FormControl>
                             <SelectContent>
-                              {roles?.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
+                              {Array.isArray(roles) && roles.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -241,7 +235,7 @@ export default function Roles() {
                           <Select onValueChange={field.onChange} defaultValue={field.value}>
                             <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                             <SelectContent>
-                              {branches?.map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
+                              {Array.isArray(branches) && branches.map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         </FormItem>
@@ -282,7 +276,7 @@ export default function Roles() {
                         <TableCell><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
                       </TableRow>
                     ))
-                  ) : !users || users.length === 0 ? (
+                  ) : !Array.isArray(users) || users.length === 0 ? (
                     <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">لا يوجد مستخدمين</TableCell></TableRow>
                   ) : (
                     users.map(user => (
@@ -330,17 +324,24 @@ export default function Roles() {
                   
                   <div>
                     <h3 className="text-sm font-medium mb-3 pb-2 border-b">تحديد الصلاحيات الممنوحة لهذا الدور</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-4 gap-x-6 bg-secondary/10 p-4 rounded-lg border">
-                      {Object.entries(PERMISSIONS_MAP).map(([key, label]) => (
-                        <div key={key} className="flex items-center space-x-2 space-x-reverse">
-                          <Checkbox 
-                            id={key} 
-                            checked={permissions[key]} 
-                            onCheckedChange={(checked) => handlePermissionChange(key, checked as boolean)} 
-                          />
-                          <label htmlFor={key} className="text-sm font-medium leading-none cursor-pointer">
-                            {label}
-                          </label>
+                    <div className="space-y-6">
+                      {Object.entries(PERMISSIONS_GROUPS).map(([groupName, groupPermissions]) => (
+                        <div key={groupName} className="space-y-3">
+                          <h4 className="text-sm font-semibold text-primary/80 border-b pb-1">{groupName}</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-3 gap-x-6 bg-secondary/5 p-3 rounded-md border">
+                            {Object.entries(groupPermissions).map(([key, label]) => (
+                              <div key={key} className="flex items-center space-x-2 space-x-reverse">
+                                <Checkbox 
+                                  id={key} 
+                                  checked={permissions[key]} 
+                                  onCheckedChange={(checked) => handlePermissionChange(key, checked as boolean)} 
+                                />
+                                <label htmlFor={key} className="text-sm font-medium leading-none cursor-pointer">
+                                  {label}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -385,14 +386,14 @@ export default function Roles() {
                     <TableHeader className="bg-secondary/20 sticky top-0">
                       <TableRow>
                         <TableHead className="w-[200px]">الصلاحية</TableHead>
-                        {roles?.map(r => <TableHead key={r.id} className="text-center">{r.name}</TableHead>)}
+                        {Array.isArray(roles) && roles.map(r => <TableHead key={r.id} className="text-center">{r.name}</TableHead>)}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {Object.entries(PERMISSIONS_MAP).map(([key, label]) => (
+                      {Object.entries(FLAT_PERMISSIONS).map(([key, label]) => (
                         <TableRow key={key}>
                           <TableCell className="text-sm font-medium border-l bg-secondary/5">{label}</TableCell>
-                          {roles?.map(role => (
+                  {Array.isArray(roles) && roles.map(role => (
                             <TableCell key={`${role.id}-${key}`} className="text-center">
                               {((role.permissions as any)[key]) ? (
                                 <div className="h-2 w-2 rounded-full bg-emerald-500 mx-auto" title="مفعل" />

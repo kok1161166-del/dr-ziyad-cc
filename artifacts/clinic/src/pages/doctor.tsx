@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -22,6 +23,8 @@ import {
   Plus, Trash2, X, ShoppingCart, Package, Bell, BellRing, Volume2, ChevronDown,
   ChevronUp, ClipboardList, CheckCheck, Hourglass, AlertCircle, Ban,
   Sparkles, Hash, Loader2, RefreshCw, AlertOctagon, LogIn, LogOut, User,
+  CalendarClock, CalendarPlus, Image, Camera, Share2, QrCode, Download,
+  Upload, Info, SplitSquareHorizontal,
 } from "lucide-react";
 import {
   supabase,
@@ -33,9 +36,13 @@ import {
   createProductSale,
   getProducts, searchProducts,
   createPayment,
-  subscribeToAppointments
+  subscribeToAppointments, subscribeToPhotos,
+  createFollowUp, createBooking, getFollowUpsForPatient,
+  createVisitPhoto, getVisitPhotosForPatient, deleteVisitPhoto,
+  getBookings, updateBooking, deleteBooking, searchPatients, logActivity,
 } from "@/lib/db";
-import type { DbPatient, DbAppointment, DbProduct, AppointmentStatus } from "@/lib/db";
+import type { DbPatient, DbAppointment, DbProduct, AppointmentStatus, DbFollowUp, DbVisitPhoto, DbBooking } from "@/lib/db";
+import { BookingSection } from "@/components/bookings/booking-section";
 
 // ---- Constants ----
 const faceZones = [
@@ -99,6 +106,27 @@ const procedurePrices: Record<string, number> = {
 
 const proceduresList = Object.keys(procedurePrices);
 
+const formatVisitTime = (timeString?: string) => {
+  if (!timeString) return "غير مسجل";
+  try {
+    if (timeString.includes("T") || timeString.includes("-")) {
+      const d = new Date(timeString);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString("ar-EG", { hour: '2-digit', minute: '2-digit' });
+      }
+    }
+    if (timeString.includes(":")) {
+      const [h, m] = timeString.split(":");
+      let hours = parseInt(h, 10);
+      const suffix = hours >= 12 ? 'م' : 'ص';
+      if (hours > 12) hours -= 12;
+      if (hours === 0) hours = 12;
+      return `${hours}:${m} ${suffix}`;
+    }
+  } catch (e) {}
+  return timeString.substring(0, 5);
+};
+
 const skintypeColors: Record<string, string> = {
   I: "bg-red-200 text-red-800 border-red-300",
   II: "bg-orange-200 text-orange-800 border-orange-300",
@@ -150,6 +178,7 @@ interface PatientEntry {
   serviceLabel: string;
   alerts: string[];
   contraindications: string[];
+  examFeePaid?: boolean;
 }
 
 interface VisitWithData {
@@ -237,6 +266,7 @@ const mapAppointment = (apt: any): PatientEntry => {
     serviceLabel: getServiceLabel(apt.service_ids),
     alerts: [],
     contraindications: [],
+    examFeePaid: apt.exam_fee_paid || false,
   };
 };
 
@@ -247,7 +277,7 @@ const playNotification = () => {
 
 // ---- Component ----
 export default function Doctor() {
-  const [view, setView] = useState<"queue" | "session" | "completed">("queue");
+  const [view, setView] = useState<"queue" | "session" | "completed" | "bookings">("queue");
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -295,6 +325,33 @@ export default function Doctor() {
 
   const [sessionSaving, setSessionSaving] = useState(false);
   const [approvingId, setApprovingId] = useState<number | null>(null);
+
+  // ---- Follow-up State ----
+  const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
+  const [followUpInterval, setFollowUpInterval] = useState("");
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [followUpNotes, setFollowUpNotes] = useState("");
+  const [followUps, setFollowUps] = useState<DbFollowUp[]>([]);
+  const [followUpSaving, setFollowUpSaving] = useState(false);
+  const [pendingFinishData, setPendingFinishData] = useState<{ visitId: number; appointment: any } | null>(null);
+
+  // ---- Photo State ----
+  const [photosVisitId, setPhotosVisitId] = useState<number | null>(null);
+  const [patientVisits, setPatientVisits] = useState<any[]>([]);
+  const [photos, setPhotos] = useState<DbVisitPhoto[]>([]);
+  const [photosLoading, setPhotosLoading] = useState(false);
+  const [qrPhotoUrl, setQrPhotoUrl] = useState<string | null>(null);
+  const [showQrDialog, setShowQrDialog] = useState(false);
+  const [qrDialogType, setQrDialogType] = useState<"upload" | "share">("upload");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoType, setPhotoType] = useState<"before" | "after">("before");
+  const [compareMode, setCompareMode] = useState(false);
+  const [comparePhotos, setComparePhotos] = useState<any[]>([]);
+  const [photoNotes, setPhotoNotes] = useState("");
+  const [showAllPhotos, setShowAllPhotos] = useState(false);
+  const [selectedVisitDetail, setSelectedVisitDetail] = useState<any>(null);
+  const [visitDetailLoading, setVisitDetailLoading] = useState(false);
 
   // ---- Derived Data ----
   const patientEntries = useMemo(() => {
@@ -454,6 +511,17 @@ export default function Doctor() {
     }
   }, [currentVisit]);
 
+  // Load follow-ups for current patient
+  useEffect(() => {
+    if (currentAppointment?.patient_id) {
+      getFollowUpsForPatient(currentAppointment.patient_id)
+        .then(setFollowUps)
+        .catch(() => setFollowUps([]));
+    } else {
+      setFollowUps([]);
+    }
+  }, [currentAppointment?.patient_id]);
+
   // ---- Timer - always sync elapsed from localStorage ----
   useEffect(() => {
     const id = setInterval(() => {
@@ -552,6 +620,13 @@ export default function Doctor() {
       setView("session");
 
       await updateAppointmentStatus(entry.appointmentId, "in_examination");
+      logActivity({
+        user_name: "د. زياد أبو دقة",
+        action_type: "create",
+        entity_type: "visit",
+        entity_name: entry.name,
+        details: { description: `بدء جلسة كشف للمريض ${entry.name}`, appointment_id: entry.appointmentId, visit_id: visit.id },
+      }).catch(() => {});
       const updated = appointments.map((a) =>
         a.id === entry.appointmentId ? { ...a, status: "in_examination" } : a
       );
@@ -796,19 +871,72 @@ export default function Doctor() {
         a.id === currentAppointment.id ? { ...a, status: "exam_completed" } : a
       );
       setAppointments(updated);
-      setCurrentAppointment(null);
-      setCurrentPatientData(null);
-      setCurrentVisit(null);
-      activeVisitRef.current = 0;
-      setSessionAddons([]);
-      setElapsed(0);
-      setView("queue");
+      setFollowUpDate(new Date().toISOString().slice(0, 10));
+      setFollowUpInterval("");
+      setFollowUpNotes("");
+      setShowFollowUpDialog(true);
     } catch (err: any) {
       console.error("Failed to finish session:", err);
     } finally {
       setSessionSaving(false);
     }
   }, [currentVisit, currentAppointment, appointments, diagnosis, treatmentPlan, notes, prescription, addonTotal]);
+
+  async function handleFollowUpConfirm() {
+    if (!currentVisit?.id || !currentAppointment || !followUpDate) return;
+    setFollowUpSaving(true);
+    try {
+      const booking = await createBooking({
+        name: currentPatientData?.name_ar || currentAppointment.patients?.name_ar || "مريض",
+        phone: currentPatientData?.phones?.[0]?.number || currentAppointment.patients?.phones?.[0]?.number || "",
+        booking_date: followUpDate,
+        booking_time: "",
+        service: "متابعة",
+        notes: followUpNotes || "متابعة بعد الكشف",
+        status: "confirmed",
+        created_by: undefined as any,
+      });
+      await createFollowUp({
+        patient_id: currentAppointment.patient_id,
+        visit_id: currentVisit.id,
+        booking_id: booking.id,
+        recommended_date: followUpDate,
+        interval_label: followUpInterval || null,
+        notes: followUpNotes || null,
+        status: "pending",
+        created_by: undefined as any,
+      });
+      setShowFollowUpDialog(false);
+      clearSession();
+    } catch (err: any) {
+      console.error("Failed to create follow-up:", err);
+    } finally {
+      setFollowUpSaving(false);
+    }
+  }
+
+  function handleFollowUpSkip() {
+    setShowFollowUpDialog(false);
+    clearSession();
+  }
+
+  function clearSession() {
+    setCurrentAppointment(null);
+    setCurrentPatientData(null);
+    setCurrentVisit(null);
+    activeVisitRef.current = 0;
+    setSessionAddons([]);
+    setElapsed(0);
+    setView("queue");
+    setExamTab("exam");
+    setDiagnosis("");
+    setTreatmentPlan("");
+    setNotes("");
+    setPrescription("");
+    setSelectedProcedures([]);
+    setInjections([]);
+    setLaserSessions([]);
+  }
 
   const openInjectionDialog = useCallback((zoneId: string) => {
     setSelectedZone(zoneId);
@@ -829,6 +957,191 @@ export default function Doctor() {
     setShowNotification(false);
   }, []);
 
+  // ---- Photo Handlers ----
+  const loadPatientVisits = useCallback(async (pid: number) => {
+    try {
+      const { getVisitsForPatient, getInjectionLogs, getLaserLogs, getSessionAddons } = await import("@/lib/db");
+      const visits = await getVisitsForPatient(pid);
+      const detailedVisits = await Promise.all(
+        visits.map(async (visit: any) => {
+          const [inj, las, add] = await Promise.all([
+            getInjectionLogs(visit.id),
+            getLaserLogs(visit.id),
+            getSessionAddons(visit.id),
+          ]);
+          return { ...visit, _injections: inj || [], _laser: las || [], _addons: add || [] };
+        })
+      );
+      setPatientVisits(detailedVisits);
+      if (detailedVisits.length > 0) {
+        setPhotosVisitId(prev => prev || detailedVisits[0].id);
+      }
+    } catch { setPatientVisits([]); }
+  }, []);
+
+  const loadPhotos = useCallback(async (pid: number) => {
+    setPhotosLoading(true);
+    try {
+      const data = await getVisitPhotosForPatient(pid);
+      setPhotos(data);
+    } catch { setPhotos([]); }
+    finally { setPhotosLoading(false); }
+  }, []);
+
+  const loadVisitPhotos = useCallback(async (visitId: number) => {
+    setPhotosLoading(true);
+    try {
+      const { getVisitPhotosForVisit } = await import("@/lib/db");
+      const data = await getVisitPhotosForVisit(visitId);
+      setPhotos(data);
+    } catch { setPhotos([]); }
+    finally { setPhotosLoading(false); }
+  }, []);
+
+  // Auto-load when photos tab is active or patient changes
+  const prevPatientRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (examTab === "photos" && currentPatientData?.id) {
+      if (prevPatientRef.current !== currentPatientData.id) {
+        setPhotosVisitId(null);
+        setShowAllPhotos(false);
+        prevPatientRef.current = currentPatientData.id;
+      }
+      loadPatientVisits(currentPatientData.id);
+      // If a visit is selected and not in "all" mode, load per-visit photos
+      const vid = photosVisitId;
+      if (!showAllPhotos && vid) {
+        loadVisitPhotos(vid);
+      } else {
+        loadPhotos(currentPatientData.id);
+      }
+    }
+  }, [examTab, currentPatientData?.id, loadPatientVisits, loadPhotos, loadVisitPhotos, showAllPhotos]);
+
+  // Real-time photo sync - auto-refresh when new photos are uploaded (from patient page or anywhere)
+  useEffect(() => {
+    if (!currentPatientData?.id) return;
+    const pid = currentPatientData.id;
+    const channel = subscribeToPhotos(() => {
+      // Always refresh photos in the background so they're ready when the doctor opens the tab
+      getVisitPhotosForPatient(pid)
+        .then(data => setPhotos(data))
+        .catch(() => {});
+    });
+    return () => channel.unsubscribe();
+  }, [currentPatientData?.id]);
+
+  const handlePhotoFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setPhotoPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleCameraCapture = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.onchange = (e: any) => {
+      const file = e.target?.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => setPhotoPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  }, []);
+
+  const handlePhotoUpload = useCallback(async () => {
+    const pid = currentPatientData?.id;
+    if (!photoPreview || !photosVisitId || !pid) return;
+    setUploadingPhoto(true);
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: photoPreview, folder: `clinic/patient_${pid}` }),
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const { url, public_id } = await res.json();
+      await createVisitPhoto({
+        visit_id: photosVisitId,
+        patient_id: pid,
+        photo_type: photoType,
+        cloudinary_url: url,
+        cloudinary_public_id: public_id,
+        notes: photoNotes || null,
+      });
+      setPhotoPreview(null);
+      setPhotoNotes("");
+      if (currentPatientData?.id) {
+        if (showAllPhotos) {
+          await loadPhotos(currentPatientData.id);
+        } else if (photosVisitId) {
+          await loadVisitPhotos(photosVisitId);
+        }
+      }
+    } catch (err: any) {
+      toast({ title: "خطأ", description: err?.message || "فشل رفع الصورة", variant: "destructive" });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }, [photoPreview, photoNotes, photoType, currentPatientData?.id, photosVisitId, showAllPhotos, loadPhotos, loadVisitPhotos, toast]);
+
+  const handleDeletePhoto = useCallback(async (photo: DbVisitPhoto) => {
+    if (!confirm("هل أنت متأكد من حذف الصورة؟")) return;
+    try {
+      await fetch(`/api/upload/${photo.cloudinary_public_id}`, { method: "DELETE" });
+      await deleteVisitPhoto(photo.id!);
+      if (currentPatientData?.id) {
+        if (showAllPhotos) {
+          await loadPhotos(currentPatientData.id);
+        } else if (photosVisitId) {
+          await loadVisitPhotos(photosVisitId);
+        }
+      }
+    } catch {
+      toast({ title: "خطأ", description: "فشل حذف الصورة", variant: "destructive" });
+    }
+  }, [currentPatientData?.id, photosVisitId, showAllPhotos, loadPhotos, loadVisitPhotos, toast]);
+
+  const handleShowQr = useCallback(async (photo: DbVisitPhoto) => {
+    const baseUrl = window.location.origin;
+    const url = `${baseUrl}/shared-photo?id=${photo.id}`;
+    try {
+      const QRCode = (await import("qrcode")).default;
+      const dataUrl = await QRCode.toDataURL(url, { width: 300, margin: 2, color: { dark: "#1e3a5f", light: "#ffffff" } });
+      setQrPhotoUrl(dataUrl);
+      setQrDialogType("share");
+      setShowQrDialog(true);
+    } catch {
+      navigator.clipboard.writeText(url);
+      toast({ title: "تم", description: "تم نسخ الرابط" });
+    }
+  }, [toast]);
+
+  const handleShareLink = useCallback(async (photo: DbVisitPhoto) => {
+    const baseUrl = window.location.origin;
+    const url = `${baseUrl}/shared-photo?id=${photo.id}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'صورة من العيادة',
+          text: 'شاهد هذه الصورة',
+          url: url,
+        });
+      } catch (err) {
+        navigator.clipboard.writeText(url);
+        toast({ title: "تم", description: "تم نسخ الرابط بنجاح" });
+      }
+    } else {
+      navigator.clipboard.writeText(url);
+      toast({ title: "تم", description: "تم نسخ الرابط بنجاح" });
+    }
+  }, [toast]);
+
   const filteredCompleted = useMemo(() => {
     const completed = patientEntries.filter((p) =>
       ["exam_completed", "completed"].includes(p.status)
@@ -842,6 +1155,27 @@ export default function Doctor() {
       return matchSearch;
     });
   }, [patientEntries, searchQuery]);
+
+  // ---- Visit Detail Dialog ----
+  const loadVisitDetail = useCallback(async (visitId: number) => {
+    setVisitDetailLoading(true);
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      const { data: visit } = await supabase.from("visits").select("*").eq("id", visitId).single();
+      if (visit) {
+        const [inj, las, add] = await Promise.all([
+          getInjectionLogs(visit.id),
+          getLaserLogs(visit.id),
+          getSessionAddons(visit.id),
+        ]);
+        setSelectedVisitDetail({ ...visit, _injections: inj || [], _laser: las || [], _addons: add || [] });
+      }
+    } catch {
+      toast({ title: "خطأ", description: "فشل تحميل تفاصيل الزيارة", variant: "destructive" });
+    } finally {
+      setVisitDetailLoading(false);
+    }
+  }, [toast]);
 
   // ---- Completed Detail Dialog ----
   const openCompletedDetail = useCallback(async (entry: PatientEntry) => {
@@ -950,7 +1284,15 @@ export default function Doctor() {
               </Badge>
             )}
           </Button>
-          {(view === "queue" || view === "session") && (
+          <Button
+            variant={view === "bookings" ? "default" : "outline"}
+            onClick={() => setView("bookings")}
+            className="gap-2"
+          >
+            <Calendar className="h-4 w-4" />
+            الحجوزات
+          </Button>
+          {view !== "completed" && view !== "session" && (
             <Button
               variant="outline"
               onClick={() => setView("completed")}
@@ -962,23 +1304,11 @@ export default function Doctor() {
           )}
           {view === "completed" && (
             <>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setView("queue");
-                  fetchQueue();
-                }}
-                className="gap-2"
-              >
+              <Button variant="outline" onClick={() => { setView("queue"); fetchQueue(); }} className="gap-2">
                 <ArrowRight className="h-4 w-4" />
                 العودة للوحة
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => fetchQueue()}
-                className="gap-2"
-              >
+              <Button variant="ghost" size="icon" onClick={() => fetchQueue()} className="gap-2">
                 <RefreshCw className="h-4 w-4" />
               </Button>
             </>
@@ -1131,8 +1461,16 @@ export default function Doctor() {
               <CardContent>
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <div className="flex items-center gap-4">
-                    <Avatar className="h-14 w-14 bg-blue-200 text-blue-700 ring-2 ring-blue-300">
-                      <CircleUserRound className="h-7 w-7" />
+                    <Avatar className={`h-14 w-14 flex items-center justify-center ring-2 ${
+                      (entry.gender === "ذكر" || entry.gender === "male") 
+                        ? "bg-blue-100 text-blue-600 ring-blue-200" 
+                        : "bg-pink-100 text-pink-600 ring-pink-200"
+                    }`}>
+                      {(entry.gender === "ذكر" || entry.gender === "male") ? (
+                        <User className="h-7 w-7" />
+                      ) : (
+                        <CircleUserRound className="h-7 w-7" />
+                      )}
                     </Avatar>
                     <div>
                       <div className="font-bold text-lg">{entry.name}</div>
@@ -1149,8 +1487,17 @@ export default function Doctor() {
                           {entry.patientCode}
                         </Badge>
                       </div>
-                      <div className="text-sm font-medium text-primary mt-1">
+                      <div className="text-sm font-medium text-primary mt-1 flex items-center gap-2">
                         {entry.serviceLabel}
+                        {entry.examFeePaid ? (
+                          <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">
+                            تم دفع الكشفية
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
+                            الكشفية غير مدفوعة
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1402,22 +1749,45 @@ export default function Doctor() {
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </Button>
-                  <Avatar className="h-16 w-16 bg-gradient-to-br from-primary to-emerald-500 text-white ring-4 ring-primary/20">
-                    <CircleUserRound className="h-8 w-8" />
+                  <Avatar className={`h-16 w-16 flex items-center justify-center text-white ring-4 ${
+                    ((currentPatientData?.gender || currentAppointment?.patients?.gender) === "ذكر" || (currentPatientData?.gender || currentAppointment?.patients?.gender) === "male") 
+                      ? "bg-gradient-to-br from-blue-500 to-blue-600 ring-blue-500/20" 
+                      : "bg-gradient-to-br from-pink-500 to-rose-500 ring-pink-500/20"
+                  }`}>
+                    {((currentPatientData?.gender || currentAppointment?.patients?.gender) === "ذكر" || (currentPatientData?.gender || currentAppointment?.patients?.gender) === "male") ? (
+                      <User className="h-8 w-8" />
+                    ) : (
+                      <CircleUserRound className="h-8 w-8" />
+                    )}
                   </Avatar>
                   <div>
                     <div className="flex items-center gap-3 flex-wrap">
                       <h2 className="text-xl font-bold">
                         {currentPatientData?.name_ar || currentAppointment?.patients?.name_ar || "مريض"}
                       </h2>
-                      <Badge variant="outline" className="font-mono text-xs">
-                        <Hash className="h-3 w-3 ml-1" />
-                        {currentPatientData?.local_code
-                          ? `P-${String(currentPatientData.local_code).padStart(5, "0")}`
-                          : ""}
-                      </Badge>
+                      {currentPatientData?.id_number && (
+                        <Badge variant="outline" className="font-mono text-xs">
+                          <Hash className="h-3 w-3 ml-1" />
+                          هوية: {currentPatientData.id_number}
+                        </Badge>
+                      )}
+                      {currentPatientData?.local_code && !currentPatientData?.id_number && (
+                        <Badge variant="outline" className="font-mono text-xs">
+                          <Hash className="h-3 w-3 ml-1" />
+                          ملف: {currentPatientData.local_code}
+                        </Badge>
+                      )}
+                      {currentAppointment?.exam_fee_paid ? (
+                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                          مدفوع {currentAppointment?.exam_fee_amount ? `(₪${currentAppointment.exam_fee_amount})` : ""}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                          غير مدفوع {currentAppointment?.exam_fee_amount ? `(₪${currentAppointment.exam_fee_amount})` : ""}
+                        </Badge>
+                      )}
                     </div>
-                    <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground mt-1">
+                    <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground mt-2">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" />
                         {getAge(currentPatientData?.date_of_birth)} سنة
@@ -1426,11 +1796,23 @@ export default function Doctor() {
                         <Phone className="h-3.5 w-3.5" />
                         {getPatientPhone(currentPatientData)}
                       </span>
+                      {currentPatientData?.gender && (
+                        <span className="flex items-center gap-1">
+                          <UserRound className="h-3.5 w-3.5" />
+                          {currentPatientData.gender === "male" ? "ذكر" : currentPatientData.gender === "female" ? "أنثى" : currentPatientData.gender}
+                        </span>
+                      )}
+                      {currentPatientData?.marital_status && (
+                        <span className="flex items-center gap-1">
+                          <Users className="h-3.5 w-3.5" />
+                          {currentPatientData.marital_status === "single" ? "أعزب/عزباء" : currentPatientData.marital_status === "married" ? "متزوج/ة" : currentPatientData.marital_status}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-sm px-3 py-1.5">
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-sm px-3 py-1.5 w-fit">
                     <Timer className="h-3.5 w-3.5 ml-1.5" />
                     {formatElapsed(elapsed)}
                   </Badge>
@@ -1444,14 +1826,22 @@ export default function Doctor() {
             {/* Tabs Area */}
             <div className="lg:col-span-3 space-y-4">
               <Tabs value={examTab} onValueChange={setExamTab} className="w-full">
-                <TabsList className="w-full grid grid-cols-2 sm:grid-cols-4 max-w-3xl">
+                <TabsList className="w-full grid grid-cols-4 sm:grid-cols-7 max-w-5xl">
                   <TabsTrigger value="exam" className="gap-2">
                     <Stethoscope className="h-4 w-4" />
                     <span className="hidden sm:inline">الكشف</span>
                   </TabsTrigger>
+                  <TabsTrigger value="history" className="gap-2">
+                    <ClipboardList className="h-4 w-4" />
+                    <span className="hidden sm:inline">السجل الطبي</span>
+                  </TabsTrigger>
                   <TabsTrigger value="injections" className="gap-2">
                     <Syringe className="h-4 w-4" />
                     <span className="hidden sm:inline">الحقن</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="followup" className="gap-2">
+                    <CalendarClock className="h-4 w-4" />
+                    <span className="hidden sm:inline">المتابعة</span>
                   </TabsTrigger>
                   <TabsTrigger value="laser" className="gap-2">
                     <Zap className="h-4 w-4" />
@@ -1461,20 +1851,158 @@ export default function Doctor() {
                     <ShoppingCart className="h-4 w-4" />
                     <span className="hidden sm:inline">المنتجات</span>
                   </TabsTrigger>
+                  <TabsTrigger value="photos" className="gap-2" onClick={() => { if (currentPatientData?.id) { loadPhotos(currentPatientData.id); } }}>
+                    <Image className="h-4 w-4" />
+                    <span className="hidden sm:inline">معرض الصور</span>
+                  </TabsTrigger>
                 </TabsList>
+
+                {/* Tab: History */}
+                <TabsContent value="history" className="space-y-4 mt-4">
+                  {patientVisits.filter(v => v.id !== currentVisit?.id).length === 0 ? (
+                    <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <ClipboardList className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+                      <p className="text-slate-500 font-medium">لا يوجد سجل طبي أو زيارات سابقة لهذا المريض</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {patientVisits.filter(v => v.id !== currentVisit?.id).map((v) => (
+                        <Card key={v.id} className="border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+                          <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent py-4 px-5 border-b">
+                            <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+                              <div>
+                                <CardTitle className="text-lg font-bold flex items-center gap-2 text-primary">
+                                  <CalendarClock className="h-5 w-5" />
+                                  زيارة بتاريخ: {new Date(v.visit_date || v.created_at).toLocaleDateString("ar-EG", { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
+                                </CardTitle>
+                                <div className="flex flex-wrap gap-4 mt-2 text-sm text-slate-600">
+                                  <span className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-emerald-600" /> دخول: {formatVisitTime(v.start_time)}</span>
+                                  <span className="flex items-center gap-1.5"><ArrowRight className="h-4 w-4 text-rose-600" /> خروج: {formatVisitTime(v.end_time)}</span>
+                                  {v.start_time && v.end_time && (
+                                    <span className="flex items-center gap-1.5"><Timer className="h-4 w-4 text-slate-500" /> المدة: {(() => {
+                                      try {
+                                        const s = v.start_time.includes("T") ? new Date(v.start_time) : new Date(`1970-01-01T${v.start_time}Z`);
+                                        const e = v.end_time.includes("T") ? new Date(v.end_time) : new Date(`1970-01-01T${v.end_time}Z`);
+                                        if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+                                          const diffMins = Math.round((e.getTime() - s.getTime()) / 60000);
+                                          if (diffMins > 0) return `${diffMins} دقيقة`;
+                                        }
+                                      } catch(e) {}
+                                      return "غير معروف";
+                                    })()}</span>
+                                  )}
+                                  <span className="flex items-center gap-1.5 font-semibold text-slate-800 border-r pr-4 border-slate-300">
+                                    <ShoppingCart className="h-4 w-4 text-blue-600" /> 
+                                    تم دفع: ₪{v.paid_amount || 0} من أصل ₪{v.total_fee || v.total_amount || 0}
+                                  </span>
+                                </div>
+                              </div>
+                              {v.services && v.services.length > 0 && (
+                                <div className="flex flex-wrap justify-end gap-1.5">
+                                  {v.services.map((svc: string, idx: number) => (
+                                    <Badge key={idx} variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                                      {svc}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </CardHeader>
+                          <CardContent className="p-5 grid gap-4 grid-cols-1 md:grid-cols-2">
+                            <div className="col-span-1 md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                              <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-2"><Stethoscope className="h-4 w-4 text-primary" /> التشخيص</h4>
+                              {v.diagnosis ? (
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed text-slate-700">{v.diagnosis}</p>
+                              ) : (
+                                <p className="text-sm text-slate-400 italic">لا يوجد تشخيص</p>
+                              )}
+                            </div>
+                            <div className="col-span-1 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/50">
+                              <h4 className="text-sm font-bold text-emerald-800 flex items-center gap-2 mb-2"><FileText className="h-4 w-4 text-emerald-600" /> خطة العلاج</h4>
+                              {v.treatment_plan ? (
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed text-slate-700">{v.treatment_plan}</p>
+                              ) : (
+                                <p className="text-sm text-slate-400 italic">لا يوجد خطة علاج</p>
+                              )}
+                            </div>
+                            <div className="col-span-1 bg-amber-50/50 p-4 rounded-xl border border-amber-100/50">
+                              <h4 className="text-sm font-bold text-amber-800 flex items-center gap-2 mb-2"><Pill className="h-4 w-4 text-amber-600" /> روشتة / وصفة طبية</h4>
+                              {v.prescription ? (
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed text-slate-700">{v.prescription}</p>
+                              ) : (
+                                <p className="text-sm text-slate-400 italic">لا يوجد وصفة طبية</p>
+                              )}
+                            </div>
+                            <div className="col-span-1 md:col-span-2 bg-purple-50/50 p-4 rounded-xl border border-purple-100/50">
+                              <h4 className="text-sm font-bold text-purple-800 flex items-center gap-2 mb-2"><Package className="h-4 w-4 text-purple-600" /> الإجراءات الموصى بها والمنتجات</h4>
+                              {v._addons && v._addons.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {v._addons.map((a: any) => (
+                                    <Badge key={a.id} variant="outline" className="bg-white border-purple-200 text-purple-700">
+                                      {a.name} {a.quantity > 1 ? `(العدد: ${a.quantity})` : ""}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-slate-400 italic">لا يوجد إجراءات أو منتجات</p>
+                              )}
+                            </div>
+                            <div className="col-span-1 bg-rose-50/50 p-4 rounded-xl border border-rose-100/50">
+                              <h4 className="text-sm font-bold text-rose-800 flex items-center gap-2 mb-2"><Syringe className="h-4 w-4 text-rose-600" /> مناطق الوجه - خريطة الحقن</h4>
+                              {v._injections && v._injections.length > 0 ? (
+                                <div className="flex flex-col gap-1">
+                                  {v._injections.map((inj: any) => (
+                                    <span key={inj.id} className="text-sm text-slate-700 font-medium">
+                                      • <span className="text-rose-700">{inj.zone}</span>: {inj.product_name} {inj.units ? `(${inj.units} وحدة)` : ""}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-slate-400 italic">لا يوجد سجل حقن</p>
+                              )}
+                            </div>
+                            <div className="col-span-1 bg-cyan-50/50 p-4 rounded-xl border border-cyan-100/50">
+                              <h4 className="text-sm font-bold text-cyan-800 flex items-center gap-2 mb-2"><Zap className="h-4 w-4 text-cyan-600" /> جلسة ليزر</h4>
+                              {v._laser && v._laser.length > 0 ? (
+                                <div className="flex flex-col gap-1">
+                                  {v._laser.map((las: any) => (
+                                    <span key={las.id} className="text-sm text-slate-700 font-medium">
+                                      • <span className="text-cyan-700">جهاز {las.device}</span>: {las.areas?.join("، ")} {las.settings ? `(${las.settings})` : ""}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-slate-400 italic">لا يوجد جلسات ليزر</p>
+                              )}
+                            </div>
+                            <div className="col-span-1 md:col-span-2 bg-blue-50/50 p-4 rounded-xl border border-blue-100/50">
+                              <h4 className="text-sm font-bold text-blue-800 flex items-center gap-2 mb-2"><FileText className="h-4 w-4 text-blue-600" /> ملاحظات إضافية</h4>
+                              {v.notes ? (
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed text-slate-700">{v.notes.split("\n⏱ مدة الكشف")[0]}</p>
+                              ) : (
+                                <p className="text-sm text-slate-400 italic">لا توجد ملاحظات</p>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
 
                 {/* Tab 1: Exam */}
                 <TabsContent value="exam" className="space-y-4 mt-4">
+
                   <Card>
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base flex items-center gap-2">
                         <FileText className="h-5 w-5 text-primary" />
-                        التشخيص
+                        التشخيص الحالي
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <Textarea
-                        placeholder="أكتب التشخيص الطبي..."
+                        placeholder="أكتب التشخيص الطبي للجلسة الحالية..."
                         className="min-h-[120px] text-base leading-relaxed"
                         value={diagnosis}
                         onChange={(e) => setDiagnosis(e.target.value)}
@@ -1833,6 +2361,121 @@ export default function Doctor() {
                   </Dialog>
                 </TabsContent>
 
+                {/* Tab 2b: Follow-up */}
+                <TabsContent value="followup" className="space-y-4 mt-4">
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <CalendarClock className="h-5 w-5 text-emerald-600" />
+                        الموعد القادم (متابعة)
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      {/* Past follow-ups */}
+                      {followUps.length > 0 && (
+                        <div>
+                          <Label className="text-sm text-muted-foreground mb-2 block">المواعيد السابقة</Label>
+                          <div className="space-y-2">
+                            {followUps.map((fu) => (
+                              <div key={fu.id} className="flex items-center justify-between p-2.5 bg-muted/30 rounded-lg border text-sm">
+                                <div className="flex items-center gap-3">
+                                  <Calendar className="h-4 w-4 text-emerald-600" />
+                                  <span>{new Date(fu.recommended_date + "T00:00:00").toLocaleDateString("ar-EG")}</span>
+                                  {fu.interval_label && (
+                                    <Badge variant="outline" className="text-xs">{fu.interval_label}</Badge>
+                                  )}
+                                </div>
+                                <Badge className={cn(
+                                  fu.status === "completed" ? "bg-emerald-100 text-emerald-700" :
+                                  fu.status === "cancelled" ? "bg-red-100 text-red-700" :
+                                  "bg-amber-100 text-amber-700"
+                                )}>
+                                  {fu.status === "completed" ? "تم" : fu.status === "cancelled" ? "ملغي" : "قيد الانتظار"}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <Separator />
+
+                      {/* Set follow-up */}
+                      <div>
+                        <Label className="text-sm text-muted-foreground mb-2 block">تحديد موعد متابعة جديد</Label>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {[
+                            { label: "أسبوع", value: "أسبوع" },
+                            { label: "أسبوعين", value: "أسبوعين" },
+                            { label: "شهر", value: "شهر" },
+                            { label: "شهرين", value: "شهرين" },
+                            { label: "3 أشهر", value: "3 أشهر" },
+                            { label: "4 أشهر", value: "4 أشهر" },
+                            { label: "6 أشهر", value: "6 أشهر" },
+                          ].map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => {
+                                setFollowUpInterval(opt.value);
+                                const d = new Date();
+                                switch (opt.value) {
+                                  case "أسبوع": d.setDate(d.getDate() + 7); break;
+                                  case "أسبوعين": d.setDate(d.getDate() + 14); break;
+                                  case "شهر": d.setMonth(d.getMonth() + 1); break;
+                                  case "شهرين": d.setMonth(d.getMonth() + 2); break;
+                                  case "3 أشهر": d.setMonth(d.getMonth() + 3); break;
+                                  case "4 أشهر": d.setMonth(d.getMonth() + 4); break;
+                                  case "6 أشهر": d.setMonth(d.getMonth() + 6); break;
+                                }
+                                setFollowUpDate(d.toISOString().slice(0, 10));
+                              }}
+                              className={cn(
+                                "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                                followUpInterval === opt.value
+                                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                  : "bg-white text-muted-foreground border-gray-200 hover:border-emerald-300 hover:text-emerald-700"
+                              )}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 mt-3">
+                          <div className="space-y-2">
+                            <Label>أو اختر تاريخ محدد</Label>
+                            <Input
+                              type="date"
+                              value={followUpDate}
+                              onChange={e => setFollowUpDate(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>ملاحظات</Label>
+                            <Input
+                              value={followUpNotes}
+                              onChange={e => setFollowUpNotes(e.target.value)}
+                              placeholder="ملاحظة..."
+                            />
+                          </div>
+                        </div>
+                        <Button
+                          onClick={handleFollowUpConfirm}
+                          disabled={!followUpDate || followUpSaving}
+                          className="mt-4 gap-2 bg-gradient-to-r from-emerald-600 to-emerald-700"
+                        >
+                          {followUpSaving ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CalendarPlus className="h-4 w-4" />
+                          )}
+                          حفظ موعد المتابعة
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
                 {/* Tab 3: Laser */}
                 <TabsContent value="laser" className="space-y-4 mt-4">
                   <Card>
@@ -2104,6 +2747,277 @@ export default function Doctor() {
                     </CardContent>
                   </Card>
                 </TabsContent>
+
+                {/* Tab 5: Photos */}
+                <TabsContent value="photos" className="space-y-4 mt-4">
+                  {currentPatientData ? (
+                    <>
+                      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold flex items-center gap-2">
+                          <Image className="h-5 w-5 text-primary" />
+                          معرض صور المريض
+                        </h3>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant={compareMode ? "default" : "outline"}
+                            size="sm"
+                            className={cn("gap-2", compareMode ? "bg-primary text-white" : "")}
+                            onClick={() => {
+                              if (compareMode) {
+                                setCompareMode(false);
+                                setComparePhotos([]);
+                              } else {
+                                setCompareMode(true);
+                                setComparePhotos([]);
+                                toast({ title: "وضع المقارنة", description: "اختر صورتين للمقارنة بينهما" });
+                              }
+                            }}
+                          >
+                            <SplitSquareHorizontal className="h-4 w-4" />
+                            {compareMode ? "إلغاء المقارنة" : "مقارنة قبل وبعد"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={async () => {
+                              const url = `${window.location.origin}/patient-photo?patient=${currentPatientData.id}`;
+                              try {
+                                const QRCode = (await import("qrcode")).default;
+                                const dataUrl = await QRCode.toDataURL(url, { width: 300, margin: 2, color: { dark: "#1e3a5f", light: "#ffffff" } });
+                                setQrPhotoUrl(dataUrl);
+                                setQrDialogType("upload");
+                                setShowQrDialog(true);
+                              } catch {
+                                navigator.clipboard.writeText(url);
+                                toast({ title: "تم", description: "تم نسخ الرابط" });
+                              }
+                            }}
+                          >
+                            <QrCode className="h-4 w-4" />
+                            رابط الرفع السريع
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Upload photo form */}
+                      <Card className="mb-6">
+                        <CardHeader className="pb-3 border-b bg-muted/20">
+                          <CardTitle className="text-sm flex items-center gap-2">
+                            <Upload className="h-4 w-4 text-primary" />
+                            إضافة صورة للمعرض
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-4">
+                          <div className="space-y-4">
+                            <div className="flex flex-col sm:flex-row gap-3">
+                              <div className="flex-1">
+                                <Input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  onChange={handlePhotoFileChange}
+                                  disabled={uploadingPhoto}
+                                  className="h-10 cursor-pointer"
+                                />
+                              </div>
+                              <Button
+                                variant="outline"
+                                className="h-10 shrink-0 gap-2"
+                                onClick={handleCameraCapture}
+                                disabled={uploadingPhoto}
+                              >
+                                <Camera className="h-4 w-4" />
+                                <span className="hidden sm:inline">الكاميرا</span>
+                              </Button>
+                            </div>
+                            {photoPreview && (
+                              <div className="flex flex-col sm:flex-row gap-4 items-start bg-muted/20 p-4 rounded-xl border">
+                                <div className="relative rounded-lg overflow-hidden border max-w-xs shrink-0 shadow-sm">
+                                  <img src={photoPreview} alt="Preview" className="w-48 h-48 object-cover" />
+                                  <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    className="absolute top-2 right-2 h-7 w-7 rounded-full opacity-80 hover:opacity-100"
+                                    onClick={() => setPhotoPreview(null)}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                <div className="flex-1 w-full space-y-3">
+                                  <Textarea
+                                    value={photoNotes}
+                                    onChange={e => setPhotoNotes(e.target.value)}
+                                    placeholder="أضف ملاحظات اختيارية حول هذه الصورة..."
+                                    className="resize-none h-24"
+                                  />
+                                  <Button
+                                    onClick={() => {
+                                      setPhotoType("after"); // defaults to after
+                                      handlePhotoUpload();
+                                    }}
+                                    disabled={!photoPreview || uploadingPhoto}
+                                    className="w-full gap-2"
+                                  >
+                                    {uploadingPhoto ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Upload className="h-4 w-4" />
+                                    )}
+                                    {uploadingPhoto ? "جاري رفع الصورة..." : "اعتماد ورفع الصورة"}
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Photos Gallery */}
+                      {photosLoading ? (
+                        <div className="flex flex-col items-center justify-center py-12">
+                          <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+                          <p className="text-muted-foreground text-sm">جاري تحميل المعرض...</p>
+                        </div>
+                      ) : photos.length > 0 ? (
+                        <div>
+                          {compareMode && (
+                            <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 mb-4 text-sm text-primary flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <SplitSquareHorizontal className="h-4 w-4" />
+                                <span>الرجاء تحديد صورتين للمقارنة ({comparePhotos.length}/2)</span>
+                              </div>
+                              {comparePhotos.length === 2 && (
+                                <Dialog>
+                                  <DialogTrigger asChild>
+                                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-white shadow-md font-bold">
+                                      عرض المقارنة الآن
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                                    <DialogHeader>
+                                      <DialogTitle className="flex items-center gap-2 text-primary text-xl">
+                                        <SplitSquareHorizontal className="h-6 w-6" />
+                                        مقارنة صور المريض: {currentPatientData.name_ar}
+                                      </DialogTitle>
+                                    </DialogHeader>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                                      {comparePhotos.map((p, idx) => (
+                                        <div key={idx} className="space-y-3">
+                                          <div className="flex justify-between items-center text-sm">
+                                            <Badge variant={idx === 0 ? "secondary" : "default"} className={idx === 0 ? "bg-slate-200 text-slate-800" : "bg-emerald-100 text-emerald-800"}>
+                                              {idx === 0 ? "الصورة الأولى (قبل)" : "الصورة الثانية (بعد)"}
+                                            </Badge>
+                                            <span className="text-muted-foreground font-mono text-xs">
+                                              {p.created_at ? new Date(p.created_at).toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric" }) : ""}
+                                            </span>
+                                          </div>
+                                          <div className="rounded-xl overflow-hidden border-2 shadow-sm bg-black">
+                                            <img src={p.cloudinary_url} alt="Compare" className="w-full object-contain max-h-[500px]" />
+                                          </div>
+                                          {p.notes && <p className="text-sm text-slate-600 bg-slate-50 p-2 rounded-lg border">{p.notes}</p>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div className="flex justify-center mt-6">
+                                      <Button variant="outline" onClick={() => { setCompareMode(false); setComparePhotos([]); }} className="w-32">
+                                        إنهاء المقارنة
+                                      </Button>
+                                    </div>
+                                  </DialogContent>
+                                </Dialog>
+                              )}
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                            {photos.map(photo => {
+                              const isSelectedForCompare = comparePhotos.some(p => p.id === photo.id);
+                              return (
+                                <div 
+                                  key={photo.id} 
+                                  className={cn(
+                                    "rounded-xl overflow-hidden border-2 transition-all cursor-pointer bg-card group relative",
+                                    compareMode ? "hover:border-primary hover:shadow-md" : "hover:border-slate-300",
+                                    isSelectedForCompare ? "border-primary shadow-md ring-2 ring-primary/30" : "border-border"
+                                  )}
+                                  onClick={() => {
+                                    if (compareMode) {
+                                      if (isSelectedForCompare) {
+                                        setComparePhotos(prev => prev.filter(p => p.id !== photo.id));
+                                      } else if (comparePhotos.length < 2) {
+                                        setComparePhotos(prev => [...prev, photo]);
+                                      } else {
+                                        toast({ title: "الحد الأقصى", description: "يمكنك مقارنة صورتين فقط في نفس الوقت", variant: "destructive" });
+                                      }
+                                    } else {
+                                      window.open(photo.cloudinary_url, '_blank');
+                                    }
+                                  }}
+                                >
+                                  <div className="relative aspect-square bg-muted/10">
+                                    <img
+                                      src={photo.cloudinary_url}
+                                      alt="Patient"
+                                      className="w-full h-full object-cover"
+                                    />
+                                    {compareMode && (
+                                      <div className={cn(
+                                        "absolute top-2 right-2 h-6 w-6 rounded-full border-2 flex items-center justify-center bg-white/80 transition-colors",
+                                        isSelectedForCompare ? "border-primary bg-primary text-white" : "border-slate-400 text-transparent"
+                                      )}>
+                                        <CheckCheck className="h-3.5 w-3.5" />
+                                      </div>
+                                    )}
+                                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+                                      <p className="text-[11px] font-medium text-white shadow-sm flex items-center justify-between">
+                                        <span>{photo.created_at ? new Date(photo.created_at).toLocaleDateString("ar-EG") : ""}</span>
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {photo.notes && (
+                                    <div className="p-2 text-[10px] text-muted-foreground bg-slate-50 border-t truncate" title={photo.notes}>
+                                      {photo.notes}
+                                    </div>
+                                  )}
+                                  {!compareMode && (
+                                    <div className="absolute top-2 left-2 right-2 flex justify-between items-start opacity-100 transition-opacity">
+                                      <div className="flex flex-col gap-1">
+                                        <Button variant="secondary" size="sm" className="h-7 px-2 shadow-sm bg-white/90 hover:bg-white text-blue-600 gap-1 text-xs" onClick={(e) => { e.stopPropagation(); handleShareLink(photo); }} title="مشاركة الرابط">
+                                          <Share2 className="h-3.5 w-3.5" />
+                                          مشاركة
+                                        </Button>
+                                        <Button variant="secondary" size="icon" className="h-7 w-7 shadow-sm bg-white/90 hover:bg-white text-slate-700" onClick={(e) => { e.stopPropagation(); handleShowQr(photo); }} title="عرض كود QR">
+                                          <QrCode className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </div>
+                                      <Button variant="destructive" size="icon" className="h-7 w-7 shadow-sm opacity-90 hover:opacity-100" onClick={(e) => { e.stopPropagation(); handleDeletePhoto(photo); }} title="حذف">
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="py-16 text-center text-muted-foreground bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                          <Image className="h-16 w-16 mx-auto mb-4 text-slate-300" />
+                          <p className="text-lg font-medium text-slate-600 mb-2">لا توجد صور في المعرض</p>
+                          <p className="text-sm">يمكنك إضافة صور جديدة من الجهاز أو تصوير المريض مباشرة لتكوين معرض صوره الخاص</p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <Card>
+                      <CardContent className="py-16 text-center text-muted-foreground">
+                        <User className="h-16 w-16 mx-auto mb-4 text-slate-200" />
+                        <p className="text-xl font-medium text-slate-600">اختر مريضاً أولاً</p>
+                        <p className="text-sm mt-2">اختر مريضاً من الطابور لعرض المعرض الخاص به</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </TabsContent>
               </Tabs>
             </div>
 
@@ -2334,6 +3248,101 @@ export default function Doctor() {
           </Card>
         </div>
       )}
+
+      {/* Follow-up Dialog (after finish session) */}
+      <Dialog open={showFollowUpDialog} onOpenChange={(open) => {
+        if (!open) handleFollowUpSkip();
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <CalendarClock className="h-5 w-5 text-emerald-600" />
+              تحديد موعد متابعة
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 py-2">
+            <p className="text-sm text-muted-foreground">
+              هل ترغب في تحديد موعد متابعة للمريض <strong>{currentPatientData?.name_ar || currentAppointment?.patients?.name_ar || ""}</strong>؟
+            </p>
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: "أسبوع", value: "أسبوع" },
+                { label: "أسبوعين", value: "أسبوعين" },
+                { label: "شهر", value: "شهر" },
+                { label: "شهرين", value: "شهرين" },
+                { label: "3 أشهر", value: "3 أشهر" },
+                { label: "4 أشهر", value: "4 أشهر" },
+                { label: "6 أشهر", value: "6 أشهر" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    setFollowUpInterval(opt.value);
+                    const d = new Date();
+                    switch (opt.value) {
+                      case "أسبوع": d.setDate(d.getDate() + 7); break;
+                      case "أسبوعين": d.setDate(d.getDate() + 14); break;
+                      case "شهر": d.setMonth(d.getMonth() + 1); break;
+                      case "شهرين": d.setMonth(d.getMonth() + 2); break;
+                      case "3 أشهر": d.setMonth(d.getMonth() + 3); break;
+                      case "4 أشهر": d.setMonth(d.getMonth() + 4); break;
+                      case "6 أشهر": d.setMonth(d.getMonth() + 6); break;
+                    }
+                    setFollowUpDate(d.toISOString().slice(0, 10));
+                  }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                    followUpInterval === opt.value
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                      : "bg-white text-muted-foreground border-gray-200 hover:border-emerald-300 hover:text-emerald-700"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>التاريخ المحدد</Label>
+                <Input
+                  type="date"
+                  value={followUpDate}
+                  onChange={e => setFollowUpDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>ملاحظات</Label>
+                <Input
+                  value={followUpNotes}
+                  onChange={e => setFollowUpNotes(e.target.value)}
+                  placeholder="ملاحظة..."
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={handleFollowUpSkip}>
+                تخطي
+              </Button>
+              <Button
+                onClick={handleFollowUpConfirm}
+                disabled={!followUpDate || followUpSaving}
+                className="gap-2 bg-gradient-to-r from-emerald-600 to-emerald-700"
+              >
+                {followUpSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CalendarPlus className="h-4 w-4" />
+                )}
+                حفظ الموعد
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ===== VIEW 3: COMPLETED ===== */}
       {view === "completed" && (
@@ -2729,6 +3738,9 @@ export default function Doctor() {
         </div>
       )}
 
+      {/* ===== VIEW 4: BOOKINGS ===== */}
+      {view === "bookings" && <BookingSection />}
+
       {/* Global Notification Toast */}
       {showNotification && waitingApproval.length > 0 && (
         <div className="fixed top-4 left-4 z-50 animate-in slide-in-from-left-4 fade-in duration-300">
@@ -2753,6 +3765,240 @@ export default function Doctor() {
           </div>
         </div>
       )}
+
+      {/* Visit Detail Dialog */}
+      <Dialog open={!!selectedVisitDetail} onOpenChange={(o) => { if (!o) setSelectedVisitDetail(null); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              تفاصيل الزيارة
+            </DialogTitle>
+          </DialogHeader>
+          {visitDetailLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : selectedVisitDetail ? (
+            <div className="space-y-4">
+              {/* Visit header */}
+              <div className="flex items-center justify-between bg-muted/30 rounded-lg p-3">
+                <div className="text-sm text-muted-foreground">
+                  {new Date(selectedVisitDetail.visit_date || selectedVisitDetail.created_at).toLocaleDateString("ar-EG", {
+                    weekday: "long", year: "numeric", month: "long", day: "numeric"
+                  })}
+                </div>
+                <Badge variant="outline" className="text-xs">
+                  {selectedVisitDetail.status || "مكتمل"}
+                </Badge>
+              </div>
+
+              {/* Diagnosis */}
+              {selectedVisitDetail.diagnosis && (
+                <Card className="border-primary/10">
+                  <CardHeader className="pb-2 pt-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><Stethoscope className="h-4 w-4 text-primary" />التشخيص</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedVisitDetail.diagnosis}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Treatment Plan */}
+              {selectedVisitDetail.treatment_plan && (
+                <Card className="border-blue-200/50">
+                  <CardHeader className="pb-2 pt-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><FileText className="h-4 w-4 text-blue-600" />خطة العلاج</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedVisitDetail.treatment_plan}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Prescription */}
+              {selectedVisitDetail.prescription && (
+                <Card className="border-amber-200/50">
+                  <CardHeader className="pb-2 pt-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><FileText className="h-4 w-4 text-amber-600" />الوصفة الطبية</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedVisitDetail.prescription}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Notes */}
+              {selectedVisitDetail.notes && (
+                <Card className="border-purple-200/50">
+                  <CardHeader className="pb-2 pt-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><FileText className="h-4 w-4 text-purple-600" />ملاحظات الطبيب</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedVisitDetail.notes.split("\n⏱ مدة الكشف")[0]}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Addons */}
+              {selectedVisitDetail._addons?.length > 0 && (
+                <Card className="border-teal-200/50">
+                  <CardHeader className="pb-2 pt-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><Package className="h-4 w-4 text-teal-600" />إضافات الجلسة</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">النوع</TableHead>
+                          <TableHead className="text-right">الاسم</TableHead>
+                          <TableHead className="text-center">العدد</TableHead>
+                          <TableHead className="text-center">سعر الوحدة</TableHead>
+                          <TableHead className="text-center">الإجمالي</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedVisitDetail._addons.map((a: any, idx: number) => (
+                          <TableRow key={idx}>
+                            <TableCell><Badge variant="outline" className="text-xs">{a.item_type === "service" ? "خدمة" : "منتج"}</Badge></TableCell>
+                            <TableCell className="font-medium">{a.name}</TableCell>
+                            <TableCell className="text-center">{a.quantity}</TableCell>
+                            <TableCell className="text-center">{a.unit_price} ج.م</TableCell>
+                            <TableCell className="text-center font-medium">{a.total_price} ج.م</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Injections */}
+              {selectedVisitDetail._injections?.length > 0 && (
+                <Card className="border-rose-200/50">
+                  <CardHeader className="pb-2 pt-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><Syringe className="h-4 w-4 text-rose-600" />سجل الحقن</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">المنطقة</TableHead>
+                          <TableHead className="text-right">المنتج</TableHead>
+                          <TableHead className="text-right">العلامة التجارية</TableHead>
+                          <TableHead className="text-center">الوحدات</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedVisitDetail._injections.map((inj: any, idx: number) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-medium">{inj.zone || inj.zoneId}</TableCell>
+                            <TableCell>{inj.product_name || inj.productType}</TableCell>
+                            <TableCell>{inj.brand || "-"}</TableCell>
+                            <TableCell className="text-center">{inj.units || "-"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Laser */}
+              {selectedVisitDetail._laser?.length > 0 && (
+                <Card className="border-violet-200/50">
+                  <CardHeader className="pb-2 pt-3">
+                    <CardTitle className="text-sm flex items-center gap-2"><Zap className="h-4 w-4 text-violet-600" />جلسات الليزر</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">الجهاز</TableHead>
+                          <TableHead className="text-center">البقعة</TableHead>
+                          <TableHead className="text-center">الجرعة</TableHead>
+                          <TableHead className="text-center">العرض النبضي</TableHead>
+                          <TableHead className="text-center">عدد التمريرات</TableHead>
+                          <TableHead className="text-right">المنطقة</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedVisitDetail._laser.map((s: any) => (
+                          <TableRow key={s.id}>
+                            <TableCell className="font-medium">{s.device}</TableCell>
+                            <TableCell className="text-center">{s.spot_size || "-"}</TableCell>
+                            <TableCell className="text-center">{s.fluence ? `${s.fluence} J/cm²` : "-"}</TableCell>
+                            <TableCell className="text-center">{s.pulse_width || "-"}</TableCell>
+                            <TableCell className="text-center">{s.passes || "-"}</TableCell>
+                            <TableCell>{s.area || "-"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Financial */}
+              <Card className="bg-gradient-to-l from-emerald-50 to-amber-50 border-emerald-200/50 dark:from-emerald-950/20 dark:to-amber-950/20">
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">إجمالي الرسوم</div>
+                      <div className="font-bold text-lg">{selectedVisitDetail.total_fee || 0} ج.م</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">المدفوع</div>
+                      <div className="font-bold text-lg text-emerald-600">{selectedVisitDetail.paid_amount || 0} ج.م</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">المتبقي</div>
+                      <div className="font-bold text-lg text-red-600">{(selectedVisitDetail.total_fee || 0) - (selectedVisitDetail.paid_amount || 0)} ج.م</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Code Dialog */}
+      <Dialog open={showQrDialog} onOpenChange={setShowQrDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="h-5 w-5 text-primary" />
+              QR Code - صور قبل وبعد
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-3 py-2">
+            {currentPatientData && (
+              <p className="text-sm font-bold text-center">{currentPatientData.name_ar}</p>
+            )}
+            {qrPhotoUrl && (
+              <img src={qrPhotoUrl} alt="QR Code" className="w-64 h-64 rounded-xl shadow-lg border" />
+            )}
+            <p className="text-xs text-muted-foreground text-center">
+              المسح الضوئي بالهاتف للوصول إلى صور المريض وإضافة صور جديدة
+            </p>
+            <div className="flex gap-2 w-full">
+              <Button variant="outline" size="sm" className="gap-2 flex-1" onClick={() => {
+                if (qrPhotoUrl) {
+                  const link = document.createElement("a");
+                  link.download = "qr-photo.png";
+                  link.href = qrPhotoUrl;
+                  link.click();
+                }
+              }}>
+                <Download className="h-4 w-4" />
+                تحميل QR
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

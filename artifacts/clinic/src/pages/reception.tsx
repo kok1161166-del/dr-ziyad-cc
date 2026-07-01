@@ -30,7 +30,7 @@ import {
   ChevronDown, ChevronUp, ExternalLink, RefreshCw,
   ArrowLeftFromLine, ArrowRightFromLine, Loader2,
   BookUser, ChevronLeft, ChevronRight, MoreHorizontal,
-  BarChart3, Tag, UserCircle, ShieldCheck,
+  BarChart3, Tag, UserCircle, ShieldCheck, CalendarX,
 } from "lucide-react";
 import {
   getAppointmentsForDate, createAppointment, updateAppointmentStatus, getNextQueueNumber, getNextLocalCode,
@@ -38,8 +38,9 @@ import {
   getProducts, searchProducts, updateProductStock, createProductSale,
   getBookings, createBooking, updateBooking, deleteBooking,
   subscribeToAppointments, cancelOldPendingAppointments,
+  getVisitByAppointment, getSessionAddons, getFollowUpsForPatient, logActivity,
 } from "@/lib/db";
-import type { DbPatient, DbProduct, DbBooking, AppointmentStatus } from "@/lib/db";
+import type { DbPatient, DbProduct, DbBooking, AppointmentStatus, DbFollowUp } from "@/lib/db";
 
 // ---- Types ----
 
@@ -269,6 +270,11 @@ export default function Reception() {
   const [regPatientCode, setRegPatientCode] = useState("");
   const [regPatientName, setRegPatientName] = useState("");
 
+  // ---- Reg → Booking Dialog State ----
+  const [showRegBookingDialog, setShowRegBookingDialog] = useState(false);
+  const [regBookingDate, setRegBookingDate] = useState(todayStr());
+  const [regBookingNotes, setRegBookingNotes] = useState("");
+
   // ---- POS State ----
   const [posPatient, setPosPatient] = useState("");
   const [posPatientSearch, setPosPatientSearch] = useState("");
@@ -284,6 +290,14 @@ export default function Reception() {
   const [checkoutProcessing, setCheckoutProcessing] = useState(false);
   const [sessionPayments, setSessionPayments] = useState<LocalPaymentRecord[]>([]);
   const [nextPaymentId, setNextPaymentId] = useState(1);
+
+  // ---- Checkout Dialog State ----
+  const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
+  const [checkoutVisit, setCheckoutVisit] = useState<any>(null);
+  const [checkoutAddons, setCheckoutAddons] = useState<any[]>([]);
+  const [checkoutFollowUps, setCheckoutFollowUps] = useState<DbFollowUp[]>([]);
+  const [checkoutAppointmentId, setCheckoutAppointmentId] = useState<number | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   // ---- Settings State ----
   const [examFee, setExamFee] = useState("150");
@@ -306,6 +320,10 @@ export default function Reception() {
   const [bookingTime, setBookingTime] = useState("");
   const [bookingService, setBookingService] = useState("");
   const [bookingNotes, setBookingNotes] = useState("");
+  const [showPostponeDialog, setShowPostponeDialog] = useState(false);
+  const [postponeBooking, setPostponeBooking] = useState<DbBooking | null>(null);
+  const [postponeDate, setPostponeDate] = useState(todayStr());
+  const [postponeTime, setPostponeTime] = useState("");
 
   // ---- Sound notification ref ----
   const prevWaitingCount = useRef(0);
@@ -520,6 +538,17 @@ export default function Reception() {
     return cart.reduce((sum, item) => sum + item.quantity, 0);
   }, [cart]);
 
+  // ---- Queue Postpone Dialog ----
+  const [showQueuePostpone, setShowQueuePostpone] = useState(false);
+  const [queuePostponeEntry, setQueuePostponeEntry] = useState<AppointmentWithPatient | null>(null);
+  const [queuePostponeDate, setQueuePostponeDate] = useState(todayStr());
+  const [queuePostponeTime, setQueuePostponeTime] = useState("");
+
+  // ---- Exam Fee Dialog ----
+  const [examFeeDialogEntry, setExamFeeDialogEntry] = useState<AppointmentWithPatient | null>(null);
+  const [examFeeAmountInput, setExamFeeAmountInput] = useState("");
+  const [examFeeServiceInput, setExamFeeServiceInput] = useState("");
+
   // ---- Queue Handlers ----
 
   const [addQueueError, setAddQueueError] = useState<string | null>(null);
@@ -536,20 +565,28 @@ export default function Reception() {
   }, []);
 
   const handleAddToQueue = useCallback(async () => {
-    if (!selectedQueuePatient?.id || !newEntryService) return;
+    if (!selectedQueuePatient?.id) return;
     setAddQueueError(null);
     try {
       const queueNum = await getNextQueueNumber();
+      const patientName = selectedQueuePatient.name_ar;
       await createAppointment({
         patient_id: selectedQueuePatient.id,
         branch: "فرع غزة",
         appointment_date: todayStr(),
         appointment_time: new Date().toTimeString().slice(0, 8),
         status: "waiting_reception",
-        service_ids: [newEntryService],
+        service_ids: newEntryService ? [newEntryService] : undefined,
         queue_number: queueNum,
         notes: newEntryNotes.trim() || undefined,
       });
+      logActivity({
+        user_name: "النظام",
+        action_type: "arrive",
+        entity_type: "appointment",
+        entity_name: patientName,
+        details: { description: `تسجيل حضور المريض ${patientName}`, service: newEntryService || undefined, queue_number: queueNum },
+      }).catch(() => {});
       await fetchAppointments();
       // If from booking, mark booking as arrived
       if (pendingBooking) {
@@ -571,39 +608,99 @@ export default function Reception() {
     }
   }, [fetchAppointments]);
 
+  // ---- Checkout Dialog ----
+  const openCheckoutDialog = useCallback(async (entry: AppointmentWithPatient) => {
+    setCheckoutLoading(true);
+    setCheckoutAppointmentId(entry.id);
+    try {
+      const visit = await getVisitByAppointment(entry.id);
+      if (visit) {
+        setCheckoutVisit(visit);
+        const addons = await getSessionAddons(visit.id);
+        setCheckoutAddons(addons || []);
+        const followUps = await getFollowUpsForPatient(entry.patient_id);
+        setCheckoutFollowUps(followUps);
+      } else {
+        setCheckoutVisit(null);
+        setCheckoutAddons([]);
+        setCheckoutFollowUps([]);
+      }
+      setShowCheckoutDialog(true);
+    } catch {
+      setQueueError("فشل تحميل بيانات الجلسة");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }, []);
+
+  async function handleCheckoutConfirm() {
+    if (!checkoutAppointmentId) return;
+    try {
+      await updateAppointmentStatus(checkoutAppointmentId, "completed");
+      await fetchAppointments();
+      setShowCheckoutDialog(false);
+    } catch (err) {
+      setQueueError(err instanceof Error ? err.message : "فشل إتمام الدفع");
+    }
+  }
+
   // ---- Registration Handlers ----
 
-  const handleRegisterPatient = useCallback(async () => {
+  async function createPatientFromForm() {
+    const localCode = await getNextLocalCode();
+    const phones: { number: string; owner?: string }[] = [{ number: regPhone.trim() }];
+    if (regPhoneOwner) phones[0].owner = regPhoneOwner;
+    if (regPhone2.trim()) phones.push({ number: regPhone2.trim() });
+    return createPatient({
+      local_code: localCode,
+      name_ar: regName.trim(),
+      gender: regGender,
+      date_of_birth: regDob || undefined,
+      phones,
+      home_phone: regHomePhone.trim() || undefined,
+      email: regEmail.trim() || undefined,
+      marital_status: regMarital || undefined,
+      nationality: regNationality || undefined,
+      address: regAddress.trim() || undefined,
+      governorate: regGovernorate || undefined,
+      city: regCity || undefined,
+      neighborhood: regNeighborhood || undefined,
+      occupation: regOccupation.trim() || undefined,
+      insurance_status: regInsurance || undefined,
+      source: regSource || undefined,
+      referred_by: regReferral || undefined,
+      notes: regNotes.trim() || undefined,
+    });
+  }
+
+  const handleRegisterOnly = useCallback(async () => {
     if (!regName.trim() || !regPhone.trim()) return;
     setRegSubmitting(true);
     setRegError(null);
     try {
-      const localCode = await getNextLocalCode();
-      const phones: { number: string; owner?: string }[] = [{ number: regPhone.trim() }];
-      if (regPhoneOwner) phones[0].owner = regPhoneOwner;
-      if (regPhone2.trim()) phones.push({ number: regPhone2.trim() });
+      const newPatient = await createPatientFromForm();
+      setRegPatientCode(String(newPatient.local_code));
+      setRegPatientName(regName.trim());
+      setRegSubmitted(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "فشل تسجيل المريض";
+      setRegError(message);
+    } finally {
+      setRegSubmitting(false);
+    }
+  }, [
+    regName, regGender, regDob, regPhone, regPhoneOwner, regPhone2,
+    regHomePhone, regEmail, regAddress, regCity, regGovernorate,
+    regNeighborhood, regMarital, regNationality, regOccupation,
+    regInsurance, regSource, regReferral, regNotes,
+  ]);
 
-      const newPatient = await createPatient({
-        local_code: localCode,
-        name_ar: regName.trim(),
-        gender: regGender,
-        date_of_birth: regDob || undefined,
-        phones,
-        home_phone: regHomePhone.trim() || undefined,
-        email: regEmail.trim() || undefined,
-        marital_status: regMarital || undefined,
-        nationality: regNationality || undefined,
-        address: regAddress.trim() || undefined,
-        governorate: regGovernorate || undefined,
-        city: regCity || undefined,
-        neighborhood: regNeighborhood || undefined,
-        occupation: regOccupation.trim() || undefined,
-        insurance_status: regInsurance || undefined,
-        source: regSource || undefined,
-        referred_by: regReferral || undefined,
-        notes: regNotes.trim() || undefined,
-      });
-
+  const handleRegisterWithQueue = useCallback(async () => {
+    if (!regName.trim() || !regPhone.trim()) return;
+    setRegSubmitting(true);
+    setRegError(null);
+    try {
+      const newPatient = await createPatientFromForm();
       const queueNum = await getNextQueueNumber();
       await createAppointment({
         patient_id: newPatient.id,
@@ -616,8 +713,7 @@ export default function Reception() {
         queue_number: queueNum,
         notes: regNotes.trim() || undefined,
       });
-
-      setRegPatientCode(localCode.toString());
+      setRegPatientCode(String(newPatient.local_code));
       setRegPatientName(regName.trim());
       setRegSubmitted(true);
       await fetchAppointments();
@@ -633,6 +729,42 @@ export default function Reception() {
     regNeighborhood, regMarital, regNationality, regOccupation,
     regInsurance, regSource, regReferral, regNotes, fetchAppointments,
   ]);
+
+  function handleRegisterWithBooking() {
+    if (!regName.trim() || !regPhone.trim()) return;
+    setRegBookingDate(todayStr());
+    setRegBookingNotes("");
+    setShowRegBookingDialog(true);
+  }
+
+  async function handleConfirmRegBooking() {
+    if (!regName.trim()) return;
+    setRegSubmitting(true);
+    setRegError(null);
+    try {
+      const newPatient = await createPatientFromForm();
+      await createBooking({
+        name: regName.trim(),
+        phone: regPhone.trim(),
+        booking_date: regBookingDate,
+        booking_time: "",
+        service: regSource || "استشارة",
+        notes: regBookingNotes.trim() || undefined,
+        status: "confirmed",
+        created_by: undefined as any,
+      });
+      setRegPatientCode(String(newPatient.local_code));
+      setRegPatientName(regName.trim());
+      setRegSubmitted(true);
+      setShowRegBookingDialog(false);
+      fetchTodayBookings();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "فشل تسجيل المريض";
+      setRegError(message);
+    } finally {
+      setRegSubmitting(false);
+    }
+  }
 
   const handleResetRegistration = useCallback(() => {
     setRegName("");
@@ -884,6 +1016,17 @@ export default function Reception() {
                     <Tag className="h-3 w-3" />
                     {serviceLabel}
                   </span>
+                  {entry.exam_fee_paid ? (
+                    <span className="flex items-center gap-1 font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md text-xs border border-emerald-200">
+                      <DollarSign className="h-3 w-3" />
+                      مدفوع {entry.exam_fee_amount ? `₪${entry.exam_fee_amount}` : ''}
+                    </span>
+                  ) : (entry.exam_fee_amount != null && entry.status !== "waiting_reception") ? (
+                    <span className="flex items-center gap-1 font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded-md text-xs border border-red-200">
+                      <DollarSign className="h-3 w-3" />
+                      غير مدفوع {entry.exam_fee_amount ? `₪${entry.exam_fee_amount}` : ''}
+                    </span>
+                  ) : null}
                 </div>
                 {entry.notes && (
                   <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1 bg-muted/30 rounded px-2 py-0.5 w-fit">
@@ -897,13 +1040,22 @@ export default function Reception() {
               <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                 {entry.status === "waiting_reception" && (
                   <>
-                    <Button size="sm" className="h-8 text-xs gap-1 bg-amber-600 hover:bg-amber-700 shadow-sm"
-                      onClick={() => handleQueueStatus(entry.id, "exam_fee_pending")}>
+                    <Button size="sm" className="h-8 text-xs gap-1 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 shadow-sm text-white"
+                      onClick={() => {
+                        setExamFeeDialogEntry(entry);
+                        setExamFeeAmountInput(entry.exam_fee_amount ? String(entry.exam_fee_amount) : examFee);
+                        setExamFeeServiceInput(entry.service_ids?.[0] || "");
+                      }}>
                       <Wallet className="h-3 w-3" />
                       دفع الكشفية
                     </Button>
                     <Button size="sm" variant="outline" className="h-8 text-xs gap-1 border-orange-300 text-orange-600 hover:bg-orange-50"
-                      onClick={() => handleQueueStatus(entry.id, "cancelled")}>
+                      onClick={() => {
+                        setQueuePostponeEntry(entry);
+                        setQueuePostponeDate(todayStr());
+                        setQueuePostponeTime("");
+                        setShowQueuePostpone(true);
+                      }}>
                       <ChevronLeft className="h-3 w-3" />
                       تأجيل
                     </Button>
@@ -943,9 +1095,9 @@ export default function Reception() {
                 )}
                 {entry.status === "checkout_pending" && (
                   <Button size="sm" className="h-8 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700 shadow-sm"
-                    onClick={() => handleQueueStatus(entry.id, "completed")}>
-                    <Printer className="h-3 w-3" />
-                    إتمام الدفع
+                    onClick={() => openCheckoutDialog(entry)}>
+                    <Eye className="h-3 w-3" />
+                    عرض الفاتورة
                   </Button>
                 )}
               </div>
@@ -1019,11 +1171,20 @@ export default function Reception() {
                         <Button
                           size="sm"
                           className="h-8 text-xs gap-1 bg-blue-600 hover:bg-blue-700 shadow-sm"
-                          onClick={() => {
-                            // Pre-fill the add-to-queue modal with the booking name
-                            setQueuePatientSearch(b.name);
+                          onClick={async () => {
                             setPendingBooking(b);
+                            setQueuePatientSearch(b.name);
                             setShowAddModal(true);
+                            // Auto-select first matching patient
+                            try {
+                              const results = await searchPatients(b.name);
+                              if (results.length > 0) {
+                                setQueuePatientResults(results);
+                                setSelectedQueuePatient(results[0]);
+                              }
+                            } catch {
+                              // ignore
+                            }
                           }}
                         >
                           <UserCheck className="h-3 w-3" />
@@ -1160,7 +1321,7 @@ export default function Reception() {
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <Label>نوع الخدمة <span className="text-red-500">*</span></Label>
+                        <Label>نوع الخدمة <span className="text-muted-foreground text-xs">(اختياري)</span></Label>
                         <Select value={newEntryService} onValueChange={setNewEntryService}>
                           <SelectTrigger>
                             <SelectValue placeholder="اختر الخدمة..." />
@@ -1186,11 +1347,253 @@ export default function Reception() {
                   )}
                   <div className="flex justify-end gap-2 pt-2">
                     <Button variant="outline" onClick={resetAddQueueModal}>إلغاء</Button>
-                    <Button onClick={handleAddToQueue} disabled={!selectedQueuePatient || !newEntryService}>
+                    <Button onClick={handleAddToQueue} disabled={!selectedQueuePatient}>
                       إضافة للطابور
                     </Button>
                   </div>
                 </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Exam Fee Dialog */}
+            <Dialog open={!!examFeeDialogEntry} onOpenChange={open => { if (!open) setExamFeeDialogEntry(null); }}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Wallet className="h-5 w-5 text-amber-600" />
+                    دفع الكشفية
+                  </DialogTitle>
+                </DialogHeader>
+                {examFeeDialogEntry && (
+                  <div className="space-y-5 pt-2">
+                    {/* Patient Info */}
+                    <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200">
+                      <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white font-bold text-lg shadow-sm">
+                        {examFeeDialogEntry.queue_number || "—"}
+                      </div>
+                      <div>
+                        <p className="font-bold text-base">{examFeeDialogEntry.patients?.name_ar || "غير معروف"}</p>
+                        <p className="text-sm text-muted-foreground">{examFeeDialogEntry.service_ids?.[0] || "استشارة"}</p>
+                      </div>
+                    </div>
+
+                    {/* Default Fee Banner */}
+                    <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Settings className="h-4 w-4 text-blue-600" />
+                        <span className="text-blue-700 font-medium">سعر الكشفية من الإعدادات</span>
+                      </div>
+                      <span className="text-xl font-bold font-mono text-blue-700" dir="ltr">₪{examFee}</span>
+                    </div>
+
+                    {/* Fee Input */}
+                    <div className="space-y-2">
+                      <Label className="text-base font-semibold">تعديل القيمة <span className="text-muted-foreground text-xs">(اختياري)</span></Label>
+                      <div className="relative">
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-lg font-bold text-amber-600">₪</span>
+                        <Input
+                          type="number"
+                          dir="ltr"
+                          value={examFeeAmountInput}
+                          onChange={e => setExamFeeAmountInput(e.target.value)}
+                          className="text-lg font-bold h-12 pr-10 text-center"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Service Selection */}
+                    <div className="space-y-2">
+                      <Label>الخدمة <span className="text-muted-foreground text-xs">(اختياري)</span></Label>
+                      <Select value={examFeeServiceInput} onValueChange={setExamFeeServiceInput}>
+                        <SelectTrigger className="h-11">
+                          <SelectValue placeholder="اختر الخدمة..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {defaultServices.map(s => (
+                            <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Quick Amounts */}
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-2 block">مبالغ سريعة</Label>
+                      <div className="flex gap-2 flex-wrap">
+                        {[50, 100, 150, 200, 250, 300].map(amt => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => setExamFeeAmountInput(String(amt))}
+                            className={cn(
+                              "px-4 py-2 rounded-lg border text-sm font-medium transition-all",
+                              examFeeAmountInput === String(amt)
+                                ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                                : "bg-white text-amber-700 border-amber-200 hover:bg-amber-50"
+                            )}
+                          >
+                            ₪{amt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setExamFeeDialogEntry(null)}>إلغاء</Button>
+                      <Button
+                        className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-sm gap-2"
+                        onClick={async () => {
+                          const entry = examFeeDialogEntry;
+                          if (!entry) return;
+                          try {
+                            const amount = parseFloat(examFeeAmountInput) || parseFloat(examFee) || 0;
+                            const services = examFeeServiceInput ? [examFeeServiceInput] : entry.service_ids;
+                            await updateAppointmentStatus(entry.id, "waiting_doctor_approval", {
+                              exam_fee_amount: amount,
+                              service_ids: services,
+                              exam_fee_paid: false,
+                            });
+                            logActivity({
+                              user_name: "النظام",
+                              action_type: "fee",
+                              entity_type: "appointment",
+                              entity_name: entry.patients?.name_ar || "غير معروف",
+                              details: { description: `تأجيل دفع كشفية ₪${amount} للمريض ${entry.patients?.name_ar}`, amount },
+                            }).catch(() => {});
+                            await fetchAppointments();
+                            setExamFeeDialogEntry(null);
+                          } catch (err) {
+                            toast({ title: "خطأ", description: "فشل حفظ البيانات", variant: "destructive" });
+                          }
+                        }}
+                      >
+                        لم يتم الدفع - إرسال للطبيب
+                      </Button>
+                      <Button
+                        className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-sm gap-2"
+                        onClick={async () => {
+                          const entry = examFeeDialogEntry;
+                          if (!entry) return;
+                          try {
+                            const amount = parseFloat(examFeeAmountInput) || parseFloat(examFee) || 0;
+                            const services = examFeeServiceInput ? [examFeeServiceInput] : entry.service_ids;
+                            await updateAppointmentStatus(entry.id, "waiting_doctor_approval", {
+                              exam_fee_amount: amount,
+                              service_ids: services,
+                              exam_fee_paid: true,
+                              paid_amount: amount,
+                            });
+                            logActivity({
+                              user_name: "النظام",
+                              action_type: "fee",
+                              entity_type: "appointment",
+                              entity_name: entry.patients?.name_ar || "غير معروف",
+                              details: { description: `تم دفع كشفية ₪${amount} للمريض ${entry.patients?.name_ar}`, amount },
+                            }).catch(() => {});
+                            await fetchAppointments();
+                            setExamFeeDialogEntry(null);
+                          } catch (err) {
+                            setQueueError(err instanceof Error ? err.message : "فشل تسجيل الكشفية");
+                          }
+                        }}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        تأكيد الدفع
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+
+            {/* Checkout Dialog */}
+            <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
+              <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-emerald-600" />
+                    تفاصيل الجلسة والفاتورة
+                  </DialogTitle>
+                </DialogHeader>
+                {checkoutLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+                  </div>
+                ) : checkoutVisit ? (
+                  <div className="space-y-4 py-2">
+                    {checkoutVisit.diagnosis && (
+                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                        <Label className="text-xs text-blue-600 mb-1 block">التشخيص</Label>
+                        <p className="text-sm whitespace-pre-wrap">{checkoutVisit.diagnosis}</p>
+                      </div>
+                    )}
+                    {checkoutVisit.treatment_plan && (
+                      <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+                        <Label className="text-xs text-emerald-600 mb-1 block">خطة العلاج</Label>
+                        <p className="text-sm whitespace-pre-wrap">{checkoutVisit.treatment_plan}</p>
+                      </div>
+                    )}
+                    {checkoutVisit.prescription && (
+                      <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
+                        <Label className="text-xs text-purple-600 mb-1 block">الوصفة الطبية</Label>
+                        <p className="text-sm whitespace-pre-wrap">{checkoutVisit.prescription}</p>
+                      </div>
+                    )}
+                    {checkoutVisit.notes && (
+                      <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
+                        <Label className="text-xs text-amber-600 mb-1 block">ملاحظات الطبيب</Label>
+                        <p className="text-sm whitespace-pre-wrap">{checkoutVisit.notes}</p>
+                      </div>
+                    )}
+                    {checkoutAddons.length > 0 && (
+                      <div>
+                        <Label className="text-xs text-muted-foreground mb-2 block">إضافات الجلسة</Label>
+                        <div className="border rounded-lg divide-y text-sm">
+                          {checkoutAddons.map((a: any) => (
+                            <div key={a.id} className="flex items-center justify-between px-3 py-2">
+                              <span>{a.name}</span>
+                              <span className="font-mono font-medium" dir="ltr">₪ {a.total_price}</span>
+                            </div>
+                          ))}
+                          <div className="flex items-center justify-between px-3 py-2 bg-muted/30 font-bold">
+                            <span>المجموع</span>
+                            <span className="font-mono" dir="ltr">₪ {checkoutAddons.reduce((s: number, a: any) => s + Number(a.total_price), 0)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {checkoutFollowUps.filter(f => f.status !== "cancelled").length > 0 && (
+                      <div className="p-3 bg-emerald-50/50 rounded-lg border border-emerald-100">
+                        <Label className="text-xs text-emerald-600 mb-2 block">مواعيد المتابعة</Label>
+                        <div className="space-y-1.5">
+                          {checkoutFollowUps.filter(f => f.status !== "cancelled").map(fu => (
+                            <div key={fu.id} className="flex items-center gap-2 text-sm">
+                              <Calendar className="h-3.5 w-3.5 text-emerald-600" />
+                              <span>{new Date(fu.recommended_date + "T00:00:00").toLocaleDateString("ar-EG")}</span>
+                              {fu.interval_label && <Badge variant="outline" className="text-xs">{fu.interval_label}</Badge>}
+                              {fu.notes && <span className="text-muted-foreground">— {fu.notes}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <Separator />
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button variant="outline" onClick={() => setShowCheckoutDialog(false)}>إلغاء</Button>
+                      <Button onClick={handleCheckoutConfirm} className="gap-2 bg-gradient-to-r from-emerald-600 to-emerald-700">
+                        <CheckCircle2 className="h-4 w-4" />
+                        تأكيد إتمام الدفع
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <p>لا توجد جلسة كشف لهذا الموعد</p>
+                  </div>
+                )}
               </DialogContent>
             </Dialog>
           </div>
@@ -1238,6 +1641,7 @@ export default function Reception() {
 
   function renderRegistrationSection() {
     return (
+      <>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-300">
         <div className="lg:col-span-2 space-y-6">
           <Card>
@@ -1482,20 +1886,50 @@ export default function Reception() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={handleResetRegistration}>إعادة تعيين</Button>
-                <Button
-                  onClick={handleRegisterPatient}
-                  disabled={!regName.trim() || !regPhone.trim() || regSubmitting}
-                  className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
-                >
-                  {regSubmitting ? (
-                    <Loader2 className="h-4 w-4 ml-1 animate-spin" />
-                  ) : (
-                    <UserPlus className="h-4 w-4 ml-1" />
-                  )}
-                  تسجيل المريض
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3">
+                <Button variant="outline" size="sm" onClick={handleResetRegistration} className="gap-1.5">
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  إعادة تعيين
                 </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={handleRegisterOnly}
+                    disabled={!regName.trim() || !regPhone.trim() || regSubmitting}
+                    variant="outline"
+                    className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50"
+                  >
+                    {regSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <User className="h-4 w-4" />
+                    )}
+                    إضافة عميل فقط
+                  </Button>
+                  <Button
+                    onClick={handleRegisterWithBooking}
+                    disabled={!regName.trim() || !regPhone.trim() || regSubmitting}
+                    className="gap-1.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 shadow-sm"
+                  >
+                    {regSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Calendar className="h-4 w-4" />
+                    )}
+                    إضافة عميل + حجز
+                  </Button>
+                  <Button
+                    onClick={handleRegisterWithQueue}
+                    disabled={!regName.trim() || !regPhone.trim() || regSubmitting}
+                    className="gap-1.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-sm"
+                  >
+                    {regSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <UserPlus className="h-4 w-4" />
+                    )}
+                    إضافة عميل + طابور
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1630,6 +2064,89 @@ export default function Reception() {
           </Card>
         </div>
       </div>
+
+      {/* ---- Reg → Booking Dialog ---- */}
+      <Dialog open={showRegBookingDialog} onOpenChange={setShowRegBookingDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-primary" />
+              حجز للمريض {regName.trim() || ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>تاريخ الحجز <span className="text-red-500">*</span></Label>
+              <Input
+                type="date"
+                value={regBookingDate}
+                onChange={e => setRegBookingDate(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(() => {
+                const addDays = (d: number) => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().slice(0, 10); };
+                const addMonths = (m: number) => { const dt = new Date(); dt.setMonth(dt.getMonth() + m); return dt.toISOString().slice(0, 10); };
+                const intervals = [
+                  { label: "اليوم", value: addDays(0) },
+                  { label: "أسبوع", value: addDays(7) },
+                  { label: "أسبوعين", value: addDays(14) },
+                  { label: "3 أسابيع", value: addDays(21) },
+                  { label: "شهر", value: addMonths(1) },
+                  { label: "شهرين", value: addMonths(2) },
+                  { label: "3 شهور", value: addMonths(3) },
+                  { label: "4 شهور", value: addMonths(4) },
+                  { label: "5 شهور", value: addMonths(5) },
+                  { label: "نصف سنة", value: addMonths(6) },
+                  { label: "سنة", value: addMonths(12) },
+                ];
+                return intervals.map(({ label, value }) => (
+                  <Button
+                    key={label}
+                    variant={regBookingDate === value ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setRegBookingDate(value)}
+                    className={cn(
+                      regBookingDate === value
+                        ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm"
+                        : ""
+                    )}
+                  >
+                    {label}
+                  </Button>
+                ));
+              })()}
+            </div>
+            <div className="space-y-2">
+              <Label>ملاحظات</Label>
+              <Textarea
+                value={regBookingNotes}
+                onChange={e => setRegBookingNotes(e.target.value)}
+                placeholder="ملاحظات إضافية للحجز..."
+                rows={3}
+              />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                className="flex-1 gap-1.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
+                onClick={handleConfirmRegBooking}
+                disabled={regSubmitting}
+              >
+                {regSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Calendar className="h-4 w-4" />
+                )}
+                تأكيد الحجز
+              </Button>
+              <Button variant="outline" onClick={() => setShowRegBookingDialog(false)}>
+                إلغاء
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      </>
     );
   }
 
@@ -2039,6 +2556,7 @@ export default function Reception() {
     confirmed: { label: "مؤكد", className: "bg-blue-50 text-blue-700 border-blue-200", icon: <CheckCircle2 className="h-3 w-3" /> },
     arrived: { label: "حضر", className: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <UserCheck className="h-3 w-3" /> },
     cancelled: { label: "ملغي", className: "bg-red-50 text-red-700 border-red-200", icon: <XCircle className="h-3 w-3" /> },
+    no_show: { label: "لم يأتي", className: "bg-amber-50 text-amber-700 border-amber-200", icon: <CalendarX className="h-3 w-3" /> },
   };
 
   function renderBookingsSection() {
@@ -2066,6 +2584,13 @@ export default function Reception() {
           notes: bookingNotes || undefined,
           status: "confirmed",
         });
+        logActivity({
+          user_name: "النظام",
+          action_type: "create",
+          entity_type: "booking",
+          entity_name: name,
+          details: { description: `حجز جديد لـ ${name}`, date: bookingDate, time: bookingTime, service: bookingService },
+        }).catch(() => {});
         resetBookingForm();
         setShowBookingDialog(false);
         fetchBookings();
@@ -2080,19 +2605,84 @@ export default function Reception() {
       const newStatus = next[booking.status] || "confirmed";
       try {
         await updateBooking(booking.id!, { status: newStatus });
+        const statusLabels: Record<string, string> = { confirmed: "مؤكد", arrived: "حضر", cancelled: "ملغي" };
+        logActivity({
+          user_name: "النظام",
+          action_type: newStatus === "cancelled" ? "cancel" : newStatus === "arrived" ? "arrive" : "update",
+          entity_type: "booking",
+          entity_name: booking.name,
+          details: { description: `تغيير حالة حجز ${booking.name} إلى ${statusLabels[newStatus] || newStatus}`, changed_from: statusLabels[booking.status] || booking.status, changed_to: statusLabels[newStatus] || newStatus },
+        }).catch(() => {});
         fetchBookings();
       } catch {
         toast({ title: "خطأ", description: "فشل تحديث الحالة", variant: "destructive" });
       }
     };
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async (booking: DbBooking) => {
       try {
-        await deleteBooking(id);
+        await deleteBooking(booking.id!);
+        logActivity({
+          user_name: "النظام",
+          action_type: "delete",
+          entity_type: "booking",
+          entity_name: booking.name,
+          details: { description: `حذف حجز ${booking.name}` },
+        }).catch(() => {});
         fetchBookings();
         toast({ title: "تم", description: "تم حذف الحجز" });
       } catch {
         toast({ title: "خطأ", description: "فشل حذف الحجز", variant: "destructive" });
+      }
+    };
+
+    const handleMarkNoShow = async (booking: DbBooking) => {
+      try {
+        await updateBooking(booking.id!, { status: "no_show" });
+        logActivity({
+          user_name: "النظام",
+          action_type: "update",
+          entity_type: "booking",
+          entity_name: booking.name,
+          details: { description: `تسجيل عدم حضور المريض ${booking.name}`, changed_from: booking.status, changed_to: "no_show" },
+        }).catch(() => {});
+        fetchBookings();
+        toast({ title: "تم", description: `تم تسجيل عدم حضور ${booking.name}` });
+      } catch {
+        toast({ title: "خطأ", description: "فشل تسجيل عدم الحضور", variant: "destructive" });
+      }
+    };
+
+    const openPostponeDialog = (booking: DbBooking) => {
+      setPostponeBooking(booking);
+      setPostponeDate(booking.booking_date);
+      setPostponeTime(booking.booking_time || "");
+      setShowPostponeDialog(true);
+    };
+
+    const handlePostpone = async () => {
+      if (!postponeBooking?.id) return;
+      try {
+        const oldDate = postponeBooking.booking_date;
+        const oldTime = postponeBooking.booking_time;
+        await updateBooking(postponeBooking.id!, {
+          booking_date: postponeDate,
+          booking_time: postponeTime || undefined,
+          status: "confirmed",
+        });
+        logActivity({
+          user_name: "النظام",
+          action_type: "update",
+          entity_type: "booking",
+          entity_name: postponeBooking.name,
+          details: { description: `تأجيل حجز ${postponeBooking.name} من ${oldDate} إلى ${postponeDate}`, changed_from: `${oldDate} ${oldTime || ""}`, changed_to: `${postponeDate} ${postponeTime || ""}` },
+        }).catch(() => {});
+        setShowPostponeDialog(false);
+        setPostponeBooking(null);
+        fetchBookings();
+        toast({ title: "تم", description: `تم تأجيل حجز ${postponeBooking.name} إلى ${postponeDate}` });
+      } catch (err: any) {
+        toast({ title: "خطأ", description: err?.message || "فشل تأجيل الحجز", variant: "destructive" });
       }
     };
 
@@ -2217,7 +2807,19 @@ export default function Reception() {
                             >
                               <span className="flex items-center gap-1">{statusCfg.icon}{statusCfg.label}</span>
                             </button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-red-500" onClick={() => handleDelete(booking.id!)}>
+                            {(booking.status === "confirmed" || booking.status === "no_show") && (
+                              <>
+                                <Button variant="ghost" size="sm" className="h-8 text-xs gap-1 text-amber-600 hover:text-amber-700 hover:bg-amber-50" onClick={() => handleMarkNoShow(booking)}>
+                                  <CalendarX className="h-3.5 w-3.5" />
+                                  <span className="hidden sm:inline">لم يأتي</span>
+                                </Button>
+                                <Button variant="ghost" size="sm" className="h-8 text-xs gap-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => openPostponeDialog(booking)}>
+                                  <Calendar className="h-3.5 w-3.5" />
+                                  <span className="hidden sm:inline">تأجيله</span>
+                                </Button>
+                              </>
+                            )}
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-red-500" onClick={() => handleDelete(booking)}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -2377,6 +2979,179 @@ export default function Reception() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Postpone Dialog */}
+        <Dialog open={showPostponeDialog} onOpenChange={setShowPostponeDialog}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-primary" />
+                تأجيل الحجز
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              {postponeBooking && (
+                <div className="bg-muted/40 border rounded-lg p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <User className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium">{postponeBooking.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        التاريخ الحالي: {new Date(postponeBooking.booking_date + "T00:00:00").toLocaleDateString("ar-EG")}
+                        {postponeBooking.booking_time && ` - ${postponeBooking.booking_time}`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>التاريخ الجديد *</Label>
+                  <Input type="date" value={postponeDate} onChange={e => setPostponeDate(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>الوقت</Label>
+                  <Input type="time" value={postponeTime} onChange={e => setPostponeTime(e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant={postponeDate === todayStr() ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setPostponeDate(todayStr())}
+                >
+                  اليوم
+                </Button>
+                <Button
+                  variant={(() => {
+                    const tom = new Date(); tom.setDate(tom.getDate() + 1);
+                    return postponeDate === tom.toISOString().slice(0, 10) ? "default" : "outline";
+                  })()}
+                  size="sm"
+                  onClick={() => {
+                    const tom = new Date(); tom.setDate(tom.getDate() + 1);
+                    setPostponeDate(tom.toISOString().slice(0, 10));
+                  }}
+                >
+                  غداً
+                </Button>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button className="flex-1" onClick={handlePostpone}>
+                  <Calendar className="h-4 w-4 ml-1" />
+                  تأجيل الحجز
+                </Button>
+                <Button variant="outline" onClick={() => setShowPostponeDialog(false)}>إلغاء</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Queue Postpone Dialog */}
+        <Dialog open={showQueuePostpone} onOpenChange={setShowQueuePostpone}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CalendarX className="h-5 w-5 text-orange-600" />
+                تأجيل المريض للطابور
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              {queuePostponeEntry && (
+                <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center shrink-0 text-white font-bold shadow-sm">
+                      {queuePostponeEntry.queue_number || "—"}
+                    </div>
+                    <div>
+                      <p className="font-bold">{queuePostponeEntry.patients?.name_ar || "غير معروف"}</p>
+                      <p className="text-xs text-muted-foreground">{queuePostponeEntry.service_ids?.[0] || "استشارة"}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>تاريخ الحجز الجديد *</Label>
+                  <Input type="date" value={queuePostponeDate} onChange={e => setQueuePostponeDate(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>الوقت</Label>
+                  <Input type="time" value={queuePostponeTime} onChange={e => setQueuePostponeTime(e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant={queuePostponeDate === todayStr() ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setQueuePostponeDate(todayStr())}
+                >
+                  اليوم
+                </Button>
+                <Button
+                  variant={(() => {
+                    const tom = new Date(); tom.setDate(tom.getDate() + 1);
+                    return queuePostponeDate === tom.toISOString().slice(0, 10) ? "default" : "outline";
+                  })()}
+                  size="sm"
+                  onClick={() => {
+                    const tom = new Date(); tom.setDate(tom.getDate() + 1);
+                    setQueuePostponeDate(tom.toISOString().slice(0, 10));
+                  }}
+                >
+                  غداً
+                </Button>
+              </div>
+              <Separator />
+              <div className="flex gap-2 pt-1">
+                <Button
+                  className="flex-1 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white shadow-sm gap-2"
+                  onClick={async () => {
+                    const entry = queuePostponeEntry;
+                    if (!entry) return;
+                    try {
+                      // Create a booking first
+                      const patientName = entry.patients?.name_ar || "غير معروف";
+                      const phone = entry.patients?.phones?.[0]?.number || "";
+                      await createBooking({
+                        name: patientName,
+                        phone,
+                        booking_date: queuePostponeDate,
+                        booking_time: queuePostponeTime || undefined,
+                        service: entry.service_ids?.[0] || "استشارة",
+                        notes: entry.notes || undefined,
+                        status: "confirmed",
+                        created_by: undefined as any,
+                      });
+                      logActivity({
+                        user_name: "النظام",
+                        action_type: "postpone",
+                        entity_type: "booking",
+                        entity_name: patientName,
+                        details: { description: `تأجيل المريض ${patientName} من الطابور إلى حجز في ${queuePostponeDate}`, from_queue: true, new_date: queuePostponeDate },
+                      }).catch(() => {});
+                      // Cancel current appointment
+                      await updateAppointmentStatus(entry.id, "cancelled");
+                      await fetchAppointments();
+                      await fetchTodayBookings();
+                      setShowQueuePostpone(false);
+                      setQueuePostponeEntry(null);
+                    } catch (err) {
+                      setQueueError(err instanceof Error ? err.message : "فشل تأجيل المريض");
+                    }
+                  }}
+                >
+                  <CalendarX className="h-4 w-4" />
+                  تأجيل وإنشاء حجز
+                </Button>
+                <Button variant="outline" onClick={() => { setShowQueuePostpone(false); setQueuePostponeEntry(null); }}>إلغاء</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
       </div>
     );
   }

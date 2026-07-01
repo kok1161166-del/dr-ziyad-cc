@@ -217,7 +217,8 @@ export default function Staff() {
   const [editMember, setEditMember] = useState<StaffMember | null>(null);
   const [search, setSearch] = useState("");
 
-  const filtered = (staff ?? []).filter(m =>
+  const staffList = Array.isArray(staff) ? staff : [];
+  const filtered = staffList.filter(m =>
     m.name.includes(search) || (m.position ?? "").includes(search) || (m.specialty ?? "").includes(search)
   ) as StaffMember[];
 
@@ -233,7 +234,7 @@ export default function Staff() {
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Users className="h-4 w-4" />
-          <span>{staff?.length ?? 0} موظف</span>
+          <span>{staffList.length} موظف</span>
         </div>
       </div>
 

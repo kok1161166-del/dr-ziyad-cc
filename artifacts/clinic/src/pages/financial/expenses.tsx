@@ -120,7 +120,7 @@ export default function Expenses() {
   };
 
   const handleFilter = () => setAppliedFilters({ dateFrom, dateTo, categoryId: categoryIdFilter });
-  const totalAmount = expensesList?.reduce((sum, exp) => sum + exp.amount, 0) || 0;
+  const totalAmount = Array.isArray(expensesList) ? expensesList.reduce((sum, exp) => sum + exp.amount, 0) : 0;
 
   return (
     <div className="space-y-6">
@@ -150,7 +150,7 @@ export default function Expenses() {
                       <FormItem><FormLabel>فئة المصروف</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value?.toString()}>
                           <FormControl><SelectTrigger><SelectValue placeholder="اختر الفئة..." /></SelectTrigger></FormControl>
-                          <SelectContent>{categories?.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}</SelectContent>
+                          <SelectContent>{Array.isArray(categories) && categories.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}</SelectContent>
                         </Select><FormMessage /></FormItem>
                     )} />
                     <FormField control={expForm.control} name="amount" render={({ field }) => (
@@ -197,7 +197,7 @@ export default function Expenses() {
                       <SelectTrigger><SelectValue placeholder="الكل" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">جميع الفئات</SelectItem>
-                        {categories?.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}
+                        {Array.isArray(categories) && categories.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -232,7 +232,7 @@ export default function Expenses() {
                         <TableRow key={i}>
                           {[20, 24, 48, 16, 20, 16].map((w, j) => <TableCell key={j}><Skeleton className={`h-4 w-${w}`} /></TableCell>)}
                         </TableRow>
-                      )) : !expensesList || expensesList.length === 0 ? (
+                      )) : !Array.isArray(expensesList) || expensesList.length === 0 ? (
                         <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                           <FileText className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />لا يوجد مصروفات مسجلة
                         </TableCell></TableRow>
@@ -278,7 +278,7 @@ export default function Expenses() {
                           <FormItem><FormLabel>الفئة</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value?.toString()}>
                               <FormControl><SelectTrigger><SelectValue placeholder="اختر..." /></SelectTrigger></FormControl>
-                              <SelectContent>{categories?.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}</SelectContent>
+                              <SelectContent>{Array.isArray(categories) && categories.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}</SelectContent>
                             </Select><FormMessage /></FormItem>
                         )} />
                         <FormField control={routineForm.control} name="frequency" render={({ field }) => (
@@ -343,7 +343,7 @@ export default function Expenses() {
                 <TableBody>
                   {routineLoading ? (
                     <TableRow><TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
-                  ) : !routineExpenses || routineExpenses.length === 0 ? (
+                  ) : !Array.isArray(routineExpenses) || routineExpenses.length === 0 ? (
                     <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       <RepeatIcon className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />لا يوجد مصروفات روتينية مضافة
                     </TableCell></TableRow>
@@ -428,7 +428,7 @@ export default function Expenses() {
                 <TableBody>
                   {catsLoading ? (
                     <TableRow><TableCell colSpan={4}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
-                  ) : !categories || categories.length === 0 ? (
+                  ) : !Array.isArray(categories) || categories.length === 0 ? (
                     <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                       <Tag className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />لا يوجد أقسام مضافة
                     </TableCell></TableRow>

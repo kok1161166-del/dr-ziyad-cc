@@ -1,0 +1,19 @@
+$ vite --config vite.config.ts --host 0.0.0.0
+
+  [32m[1mVITE[22m v7.3.5[39m  [2mready in [0m[1m884[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m20964[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.100.78:[1m20964[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://172.25.192.1:[1m20964[22m/[39m
+[2m18:39:09[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/patients/index.tsx, /src/index.css[22m
+[2m18:39:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/patients/index.tsx, /src/index.css[22m
+[2m18:39:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/patients/index.tsx, /src/index.css[22m
+[2m18:39:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32m✨ new dependencies optimized: [33mxlsx[32m[39m
+[2m18:39:22[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32m✨ optimized dependencies changed. reloading[39m
+[2m18:48:41[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/patients/restore-import.tsx[22m
+[2m18:48:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/patients/restore-import.tsx[22m
+[2m18:53:45[22m [36m[1m[vite][22m[39m [32mvite.config.ts changed, restarting server...[39m
+[2m18:53:45[22m [36m[1m[vite][22m[39m server restarted.
+C:\Users\MOH\Documents\GG\dr-ziyad-cl\zip-repl\artifacts\clinic:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @workspace/clinic@0.0.0 dev: `vite --config vite.config.ts --host 0.0.0.0`
+Exit status 1

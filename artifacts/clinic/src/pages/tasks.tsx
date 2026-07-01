@@ -157,8 +157,9 @@ export default function Tasks() {
   const updateMutation = useUpdateTask({ mutation: { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) } });
   const deleteMutation = useDeleteTask({ mutation: { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) } });
 
-  const pending = tasks?.filter(t => !t.isCompleted) ?? [];
-  const done = tasks?.filter(t => t.isCompleted) ?? [];
+  const tasksList = Array.isArray(tasks) ? tasks : [];
+  const pending = tasksList.filter(t => !t.isCompleted);
+  const done = tasksList.filter(t => t.isCompleted);
 
   return (
     <div className="space-y-6">
@@ -195,7 +196,7 @@ export default function Tasks() {
               onDelete={() => deleteMutation.mutate({ id: task.id })}
             />
           ))}
-          {tasks?.length === 0 && (
+          {tasksList.length === 0 && (
             <div className="text-center text-muted-foreground py-12">
               <ClipboardList className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p>لا توجد مهام بعد</p>

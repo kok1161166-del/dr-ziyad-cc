@@ -86,7 +86,7 @@ export default function ArchivedPatients() {
                     <TableCell><Skeleton className="h-8 w-24" /></TableCell>
                   </TableRow>
                 ))
-              ) : !patients || patients.length === 0 ? (
+              ) : !Array.isArray(patients) || patients.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center h-32 text-muted-foreground">
                     لا يوجد مرضى في الأرشيف

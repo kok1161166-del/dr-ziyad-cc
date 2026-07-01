@@ -268,7 +268,7 @@ export default function Inventory() {
                         <TableCell><Skeleton className="h-8 w-24 ml-auto" /></TableCell>
                       </TableRow>
                     ))
-                  ) : !items || items.length === 0 ? (
+                  ) : !Array.isArray(items) || items.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">لا يوجد مواد في المخزون</TableCell>
                     </TableRow>
@@ -399,7 +399,7 @@ export default function Inventory() {
                         <TableCell><Skeleton className="h-6 w-16 mx-auto rounded-full" /></TableCell>
                       </TableRow>
                     ))
-                  ) : !debts || debts.length === 0 ? (
+                  ) : !Array.isArray(debts) || debts.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">لا يوجد ديون للموردين</TableCell>
                     </TableRow>

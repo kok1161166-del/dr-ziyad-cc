@@ -1,54 +1,13 @@
-import { 
-  useGetDashboardStats, 
-  useGetDailyFunnel,
-  useClearAllAppointments,
-  useClearAllVisits
-} from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useGetDashboardStats, useGetDailyFunnel } from "@workspace/api-client-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Calendar, Users, DollarSign, UserPlus, Clock, LogIn, Activity, CheckCircle, CalendarX, XCircle, AlertOctagon } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Calendar, Users, DollarSign, UserPlus, Clock, LogIn, Activity, CheckCircle, CalendarX, XCircle, Stethoscope, ClipboardList } from "lucide-react";
+import { useLocation } from "wouter";
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const { data: funnel, isLoading: funnelLoading } = useGetDailyFunnel();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  const clearAppointmentsMutation = useClearAllAppointments({
-    mutation: {
-      onSuccess: () => {
-        toast({ title: "تم المسح", description: "تم مسح جميع الحجوزات بنجاح" });
-        queryClient.invalidateQueries();
-      },
-      onError: () => {
-        toast({ title: "خطأ", description: "حدث خطأ أثناء مسح الحجوزات", variant: "destructive" });
-      }
-    }
-  });
-
-  const clearVisitsMutation = useClearAllVisits({
-    mutation: {
-      onSuccess: () => {
-        toast({ title: "تم المسح", description: "تم مسح جميع الزيارات بنجاح" });
-        queryClient.invalidateQueries();
-      },
-      onError: () => {
-        toast({ title: "خطأ", description: "حدث خطأ أثناء مسح الزيارات", variant: "destructive" });
-      }
-    }
-  });
-
-  const handleClearAppointments = () => {
-    clearAppointmentsMutation.mutate();
-  };
-
-  const handleClearVisits = () => {
-    clearVisitsMutation.mutate();
-  };
+  const [, setLocation] = useLocation();
 
   return (
     <div className="space-y-6">
@@ -77,61 +36,29 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Danger Zone */}
-      <div className="mt-12">
-        <Card className="border-red-200 bg-red-50/50">
-          <CardHeader>
-            <CardTitle className="text-red-600 flex items-center gap-2">
-              <AlertOctagon className="h-5 w-5" />
-              منطقة الخطر
-            </CardTitle>
-            <CardDescription className="text-red-600/80">
-              إجراءات لا يمكن التراجع عنها. يرجى الحذر.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-4">
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" className="bg-red-600 hover:bg-red-700">تصفية الحجوزات</Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>هل أنت متأكد؟</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    هذا الإجراء سيقوم بمسح جميع الحجوزات من قاعدة البيانات ولا يمكن التراجع عنه.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter className="flex gap-2">
-                  <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleClearAppointments} className="bg-red-600 hover:bg-red-700">نعم، امسح الحجوزات</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+      {/* Quick Access */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <button onClick={() => setLocation("/reception")} className="group relative overflow-hidden rounded-xl border bg-gradient-to-br from-blue-600 to-blue-800 p-6 text-right text-white shadow-lg transition-all hover:shadow-xl hover:scale-[1.02]">
+          <div className="absolute -left-4 -top-4 h-24 w-24 rounded-full bg-white/5" />
+          <div className="absolute -bottom-4 -right-4 h-32 w-32 rounded-full bg-white/5" />
+          <ClipboardList className="h-10 w-10 mb-3 opacity-90" />
+          <h3 className="text-xl font-bold">لوحة السكرتير</h3>
+          <p className="mt-1 text-sm text-blue-100">إدارة الطابور، تسجيل مرضى جدد، الفواتير والمدفوعات</p>
+          <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-blue-200 group-hover:text-white transition-colors">
+            الدخول ←
+          </span>
+        </button>
 
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" className="bg-red-600 hover:bg-red-700">مسح سجل الزيارات</Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>هل أنت متأكد؟</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    هذا الإجراء سيقوم بمسح جميع الزيارات الطبية من قاعدة البيانات ولا يمكن التراجع عنه.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter className="flex gap-2">
-                  <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleClearVisits} className="bg-red-600 hover:bg-red-700">نعم، امسح الزيارات</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-
-            <div className="mr-auto flex gap-4 text-sm font-medium text-red-800 bg-red-100/50 p-2 rounded-md border border-red-200">
-              <div>إجمالي الزيارات: {stats?.totalVisits || 0}</div>
-              <div>إجمالي الحجوزات: {stats?.totalAppointments || 0}</div>
-            </div>
-          </CardContent>
-        </Card>
+        <button onClick={() => setLocation("/doctor")} className="group relative overflow-hidden rounded-xl border bg-gradient-to-br from-emerald-600 to-emerald-800 p-6 text-right text-white shadow-lg transition-all hover:shadow-xl hover:scale-[1.02]">
+          <div className="absolute -left-4 -top-4 h-24 w-24 rounded-full bg-white/5" />
+          <div className="absolute -bottom-4 -right-4 h-32 w-32 rounded-full bg-white/5" />
+          <Stethoscope className="h-10 w-10 mb-3 opacity-90" />
+          <h3 className="text-xl font-bold">لوحة الطبيب</h3>
+          <p className="mt-1 text-sm text-emerald-100">قائمة المرضى، الكشف التجميلي، سجل الحقن والليزر</p>
+          <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-emerald-200 group-hover:text-white transition-colors">
+            الدخول ←
+          </span>
+        </button>
       </div>
     </div>
   );

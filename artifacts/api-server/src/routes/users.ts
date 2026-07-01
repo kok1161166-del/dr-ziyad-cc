@@ -1,4 +1,5 @@
 import { Router } from "express";
+import bcrypt from "bcryptjs";
 import { supabase } from "../lib/supabase";
 
 const router = Router();
@@ -25,8 +26,9 @@ router.get("/users", async (req, res) => {
 router.post("/users", async (req, res) => {
   try {
     const { name, username, password, email, roleId, branch } = req.body;
+    const password_hash = password ? await bcrypt.hash(password, 10) : "";
     const { data: user, error } = await supabase.from("system_users").insert({
-      name, username, password_hash: password, email, role_id: roleId, branch,
+      name, username, password_hash, email, role_id: roleId, branch,
     }).select().single();
     if (error) throw error;
     const { data: role } = await supabase.from("roles").select("name").eq("id", roleId).single();
@@ -50,7 +52,7 @@ router.patch("/users/:id", async (req, res) => {
     if (data.roleId !== undefined) updates.role_id = data.roleId;
     if (data.branch !== undefined) updates.branch = data.branch;
     if (data.isFrozen !== undefined) updates.is_frozen = data.isFrozen;
-    if (data.password !== undefined) updates.password_hash = data.password;
+    if (data.password !== undefined && data.password !== "") updates.password_hash = await bcrypt.hash(data.password, 10);
     const { data: updated, error } = await supabase.from("system_users").update(updates).eq("id", id).select().single();
     if (error) throw error;
     const { data: roles } = await supabase.from("roles").select("id, name");

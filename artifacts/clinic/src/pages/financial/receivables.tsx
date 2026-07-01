@@ -20,7 +20,7 @@ export default function Receivables() {
   });
 
   const handleFilter = () => setAppliedFilters({ dateFrom, dateTo });
-  const totalAmount = receivables?.reduce((sum, item) => sum + item.amount, 0) || 0;
+  const totalAmount = Array.isArray(receivables) ? receivables.reduce((sum, item) => sum + item.amount, 0) : 0;
 
   return (
     <div className="space-y-6">
@@ -89,7 +89,7 @@ export default function Receivables() {
                         <TableCell><Skeleton className="h-8 w-20" /></TableCell>
                       </TableRow>
                     ))
-                  ) : !receivables || receivables.length === 0 ? (
+                  ) : !Array.isArray(receivables) || receivables.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
                         لا يوجد مستحقات حالياً

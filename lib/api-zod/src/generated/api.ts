@@ -1613,6 +1613,47 @@ export const CreateInvestigationTemplateResponse = zod.object({
 
 
 /**
+ * @summary Login user
+ */
+export const LoginBody = zod.object({
+  "username": zod.string(),
+  "password": zod.string()
+})
+
+export const LoginResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "name": zod.string(),
+  "roleId": zod.number(),
+  "roleName": zod.string(),
+  "permissions": zod.object({
+
+}).passthrough()
+})
+
+
+/**
+ * @summary Logout user
+ */
+export const LogoutResponse = zod.unknown()
+
+
+/**
+ * @summary Get current authenticated user
+ */
+export const GetMeResponse = zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "name": zod.string(),
+  "roleId": zod.number(),
+  "roleName": zod.string(),
+  "permissions": zod.object({
+
+}).passthrough()
+})
+
+
+/**
  * @summary List system users
  */
 export const ListUsersResponseItem = zod.object({
