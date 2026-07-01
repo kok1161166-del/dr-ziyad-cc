@@ -1,6 +1,6 @@
 {
-  "buildCommand": "pnpm -r --filter @workspace/clinic run build",
-  "outputDirectory": "artifacts/clinic/dist",
+  "buildCommand": "cd artifacts/clinic && npx vite build --config vite.config.ts",
+  "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
     {
