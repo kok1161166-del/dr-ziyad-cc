@@ -3,7 +3,6 @@
   "buildCommand": "pnpm --filter @workspace/clinic run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "nodeVersion": "22.x",
   "rewrites": [
     {
       "source": "/api/(.*)",
