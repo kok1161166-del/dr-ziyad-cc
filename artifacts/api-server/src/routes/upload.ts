@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { v2 as cloudinary } from "cloudinary";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.js";
 
 cloudinary.config({
   cloud_name: process.env["CLOUDINARY_CLOUD_NAME"],
