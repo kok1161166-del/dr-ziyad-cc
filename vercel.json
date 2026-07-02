@@ -1,15 +1,5 @@
 {
-  "buildCommand": "pnpm --filter @workspace/clinic run build && rm -rf dist && cp -r artifacts/clinic/dist dist",
-  "outputDirectory": "dist",
-  "framework": null,
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
+  "buildCommand": "bash scripts/vercel-build.sh",
+  "installCommand": "pnpm install",
+  "framework": null
 }
