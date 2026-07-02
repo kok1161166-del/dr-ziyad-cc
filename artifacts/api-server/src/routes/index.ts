@@ -1,20 +1,20 @@
 import { Router, type IRouter } from "express";
-import healthRouter from "./health.js";
-import dashboardRouter from "./dashboard.js";
-import patientsRouter from "./patients.js";
-import appointmentsRouter from "./appointments.js";
-import financialRouter from "./financial.js";
-import servicesRouter from "./services.js";
-import inventoryRouter from "./inventory.js";
-import analyticsRouter from "./analytics.js";
-import templatesRouter from "./templates.js";
-import usersRouter from "./users.js";
-import settingsRouter from "./settings.js";
-import staffRouter from "./staff.js";
-import tasksRouter from "./tasks.js";
-import supabaseProxyRouter from "./supabase-proxy.js";
-import uploadRouter from "./upload.js";
-import authRouter, { authMiddleware } from "./auth.js";
+import healthRouter from "./health";
+import dashboardRouter from "./dashboard";
+import patientsRouter from "./patients";
+import appointmentsRouter from "./appointments";
+import financialRouter from "./financial";
+import servicesRouter from "./services";
+import inventoryRouter from "./inventory";
+import analyticsRouter from "./analytics";
+import templatesRouter from "./templates";
+import usersRouter from "./users";
+import settingsRouter from "./settings";
+import staffRouter from "./staff";
+import tasksRouter from "./tasks";
+import supabaseProxyRouter from "./supabase-proxy";
+import uploadRouter from "./upload";
+import authRouter, { authMiddleware } from "./auth";
 
 const router: IRouter = Router();
 
