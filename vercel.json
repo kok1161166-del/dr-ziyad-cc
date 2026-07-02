@@ -1,12 +1,11 @@
 {
-  "installCommand": "pnpm install",
-  "buildCommand": "pnpm --filter @workspace/clinic run build",
+  "buildCommand": "pnpm --filter @workspace/clinic run build && rm -rf dist && cp -r artifacts/clinic/dist dist",
   "outputDirectory": "dist",
-  "framework": "vite",
+  "framework": null,
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index"
+      "destination": "/api"
     },
     {
       "source": "/(.*)",
